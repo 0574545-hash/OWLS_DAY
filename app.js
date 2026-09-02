@@ -45,9 +45,9 @@ const TITLES = {
 const TABS = [
   { key:'check', icon:'check', label:'Чек-лист'  },
   { key:'stop',  icon:'stop',  label:'Стоп-лист' },
-  { key:'meds',  icon:'pill',  label:'Лекарства' },
-  { key:'wish',  icon:'wish',  label:'Wish list' },
   { key:'diary', icon:'diary', label:'Дневник'   },
+  { key:'wish',  icon:'wish',  label:'Wish list' },
+  { key:'meds',  icon:'pill',  label:'Лекарства' },
 ];
 
 const MED_FORMS = {
