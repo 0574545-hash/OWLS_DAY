@@ -1093,8 +1093,23 @@ try {
   throw e;
 }
 
+/* Обновления: проверяем при каждом возврате в приложение; когда новая версия
+   взяла управление — перезагружаемся один раз, чтобы страница и код совпали. */
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloading || !navigator.serviceWorker.controller) return;
+    reloading = true;
+    toast('Обновляю до новой версии');
+    setTimeout(() => location.reload(), 600);
+  });
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => { /* офлайн-режим просто не включится */ });
+    navigator.serviceWorker.register('sw.js')
+      .then(reg => {
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') reg.update().catch(() => {});
+        });
+      })
+      .catch(() => { /* офлайн-режим просто не включится */ });
   });
 }
