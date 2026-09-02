@@ -345,8 +345,7 @@ function viewCheck() {
     h += '<div class="card" style="padding:16px 16px 14px;display:flex;flex-direction:column;gap:12px">' +
       '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">' +
         '<div class="grow" style="display:flex;flex-direction:column;gap:4px">' +
-          '<span class="eyebrow">В моменте</span>' +
-          '<span class="hint">Без привязки ко времени. Отметьте, когда сделали.</span></div>' +
+          '<span class="eyebrow">В моменте</span></div>' +
         '<span style="font-size:11.5px;color:var(--faint);flex:none">' +
           (marks ? 'Сегодня ' + marks + ' ' + plural(marks, 'отметка', 'отметки', 'отметок') : 'Пока без отметок') +
         '</span></div><div class="chips">' +
