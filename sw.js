@@ -1,7 +1,7 @@
 /* Офлайн-кэш. Меняйте VERSION при выкладке новой версии. */
-const VERSION = 'owls-day-v4';
+const VERSION = 'owls-day-v5';
 const ASSETS = [
-  './', './index.html', './app.js', './manifest.webmanifest',
+  './', './index.html', './app.js?v=5', './manifest.webmanifest',
   './assets/owl-mark.png?v=2', './assets/icon-192.png', './assets/icon-512.png',
 ];
 
@@ -20,8 +20,10 @@ self.addEventListener('activate', e => {
 /* Сеть первой, кэш — запасной: обновления приезжают сразу, офлайн работает. */
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+  /* html и скрипт — всегда свежие, иначе после обновления страница и код могут разойтись */
+  const fresh = e.request.mode === 'navigate' || /\/(app\.js|index\.html)(\?|$)/.test(e.request.url);
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, fresh ? { cache: 'no-store' } : undefined)
       .then(r => {
         if (r && r.ok && new URL(e.request.url).origin === location.origin) {
           const copy = r.clone();

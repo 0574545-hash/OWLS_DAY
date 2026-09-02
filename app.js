@@ -1,6 +1,24 @@
 /* Трекер дня — OWLS.  Автономное веб-приложение, без сборки и без зависимостей. */
 'use strict';
 
+/* Если что-то падает на старте — показываем ошибку и кнопку сброса, а не пустой экран. */
+function fatal(msg) {
+  const el = document.getElementById('fatal');
+  if (!el) return;
+  el.hidden = false;
+  el.querySelector('.f-msg').textContent = String(msg);
+}
+addEventListener('error', e => fatal(e.message + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')));
+addEventListener('unhandledrejection', e => fatal(e.reason && e.reason.message || e.reason));
+async function hardReset() {
+  try {
+    for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister();
+    for (const k of await caches.keys()) await caches.delete(k);
+  } catch (e) { /* нет SW — и ладно */ }
+  location.reload();
+}
+document.addEventListener('click', e => { if (e.target.closest('[data-act="hard-reset"]')) hardReset(); });
+
 /* ============================ утилиты ============================ */
 
 const MONTHS = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
@@ -753,6 +771,9 @@ function splash() {
   };
   const t = setTimeout(hide, 2200);
   el.addEventListener('click', () => { clearTimeout(t); hide(); }, { once: true });
+  /* если таймеры не сработали (фон, сон телефона) — убираем при первом же возврате */
+  setTimeout(() => { if (el.isConnected) el.remove(); }, 4000);
+  document.addEventListener('visibilitychange', () => { if (el.isConnected) el.remove(); }, { once: true });
 }
 
 
@@ -760,13 +781,14 @@ function splash() {
 /* Всплеск частиц — для чек-листа, чипов, стоп-листа и дневника; сова — для желаний. */
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const $fx = document.getElementById('fx'), fxc = $fx.getContext('2d');
+const $fx = document.getElementById('fx'), fxc = $fx ? $fx.getContext('2d') : null;
 let parts = [], fxRaf = null, dpr = 1;
-function fitFx() { dpr = Math.min(2, devicePixelRatio || 1); $fx.width = innerWidth * dpr; $fx.height = innerHeight * dpr; }
+function fitFx() { if (!$fx) return; dpr = Math.min(2, devicePixelRatio || 1); $fx.width = innerWidth * dpr; $fx.height = innerHeight * dpr; }
 fitFx(); addEventListener('resize', fitFx);
 const FX_COLORS = ['#F26336','#F26336','#0B1E35','#FFD9CC','#E9E5DC','#F9A98A'];
 
 function burst(x, y, n = 26) {
+  if (!fxc) return;
   for (let i = 0; i < n; i++) {
     const a = Math.random() * Math.PI * 2, sp = 2.2 + Math.random() * 4.2;
     parts.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 2.4, g:.16, life:1, dec:.016 + Math.random() * .012,
@@ -792,6 +814,7 @@ const OWL_WORDS = ['Исполнено.', 'Сбылось.', 'Можно выд�
 let owlTimer = null;
 function owlSay() {
   const el = document.getElementById('owl');
+  if (!el) return;
   document.getElementById('owl-w').textContent = OWL_WORDS[Math.floor(Math.random() * OWL_WORDS.length)];
   el.classList.remove('go'); void el.offsetWidth; el.classList.add('go');
   clearTimeout(owlTimer); owlTimer = setTimeout(() => el.classList.remove('go'), 1600);
@@ -1061,9 +1084,14 @@ document.addEventListener('visibilitychange', () => {
 
 /* ============================ старт ============================ */
 
-rollover();
-render(false);
-splash();
+try {
+  rollover();
+  render(false);
+  splash();
+} catch (e) {
+  fatal(e && e.message || e);
+  throw e;
+}
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   window.addEventListener('load', () => {
