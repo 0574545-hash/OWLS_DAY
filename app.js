@@ -6,18 +6,29 @@
 const MONTHS = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
 const WEEKDAYS = ['воскресенье','понедельник','вторник','среда','четверг','пятница','суббота'];
 const MOODS = ['Тяжело','Никак','Ровно','Хорошо','Ясно'];
+/* Дни недели в порядке пн…вс; значение — номер, который возвращает Date.getDay(). */
+const DOW = [{ n:1, s:'пн' },{ n:2, s:'вт' },{ n:3, s:'ср' },{ n:4, s:'чт' },{ n:5, s:'пт' },{ n:6, s:'сб' },{ n:0, s:'вс' }];
+const EVERYDAY = [0,1,2,3,4,5,6];
+const WEEKDAY_SET = [1,2,3,4,5];
+const WEEKEND_SET = [0,6];
+
 const PHASES = [
-  { key:'morning', name:'Утро',  placeholder:'Добавить в утро'  },
-  { key:'day',     name:'День',  placeholder:'Добавить в день'  },
-  { key:'evening', name:'Вечер', placeholder:'Добавить в вечер' },
+  { key:'morning', name:'Утро'  },
+  { key:'day',     name:'День'  },
+  { key:'evening', name:'Вечер' },
 ];
 const TITLES = {
-  check: { eyebrow:'Чек-лист',   title:'День по частям' },
-  stop:  { eyebrow:'Стоп-лист',  title:'Не сегодня'     },
-  set:   { eyebrow:'Установки',  title:'Настройка'      },
-  wish:  { eyebrow:'Wish list',  title:'Желания'        },
-  diary: { eyebrow:'Дневник дня',title:'Итог дня'       },
+  check: { eyebrow:'Чек-лист',    title:'День по частям' },
+  stop:  { eyebrow:'Стоп-лист',   title:'Не сегодня'     },
+  wish:  { eyebrow:'Wish list',   title:'Желания'        },
+  diary: { eyebrow:'Дневник дня', title:'Итог дня'       },
 };
+const TABS = [
+  { key:'check', icon:'check', label:'Чек-лист'  },
+  { key:'stop',  icon:'stop',  label:'Стоп-лист' },
+  { key:'wish',  icon:'wish',  label:'Wish list' },
+  { key:'diary', icon:'diary', label:'Дневник'   },
+];
 
 /** Русское склонение: 1 день, 2 дня, 5 дней. */
 function plural(n, one, few, many) {
@@ -39,6 +50,30 @@ const daysLeft = iso => Math.round((parseKey(iso) - parseKey(dayKeyOf(new Date()
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const uid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
+/** Блок дня выводится из времени: до 12:00 — утро, до 18:00 — день, дальше вечер. */
+function phaseOfTime(time) {
+  if (!time) return 'day';
+  const h = Number(String(time).slice(0, 2));
+  if (Number.isNaN(h)) return 'day';
+  if (h < 12) return 'morning';
+  if (h < 18) return 'day';
+  return 'evening';
+}
+
+/** Человеческое описание периодичности. */
+function repeatLabel(days) {
+  const d = [...(days || EVERYDAY)].sort((a, b) => a - b);
+  const same = arr => arr.length === d.length && arr.every(x => d.includes(x));
+  if (same(EVERYDAY)) return 'Каждый день';
+  if (same(WEEKDAY_SET)) return 'Будни';
+  if (same(WEEKEND_SET)) return 'Выходные';
+  if (d.length === 0) return 'Никогда';
+  return DOW.filter(x => d.includes(x.n)).map(x => x.s).join(', ');
+}
+
+/** Показывать ли пункт сегодня. */
+const onToday = i => (i.days || EVERYDAY).includes(new Date().getDay());
+
 /* ============================ иконки ============================ */
 
 const ICON = {
@@ -52,42 +87,46 @@ const ICON = {
   diary:'<rect x="4.5" y="3" width="15" height="18" rx="2.5"/><path d="M8.5 8h7M8.5 12h7M8.5 16h4"/>',
   plus:'<path d="M12 5v14M5 12h14"/>',
   tick:'<path d="M4 12.5 9.5 18 20 6.5"/>',
-  repeat:'<path d="M3 12a9 9 0 0 1 15.5-6.2M21 12a9 9 0 0 1-15.5 6.2"/><path d="M18 3v3.5h-3.5M6 21v-3.5h3.5"/>',
   cal:'<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8.5 3v4M15.5 3v4"/>',
   trash:'<path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/>',
+  photo:'<rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="10.5" r="1.8"/><path d="m4.5 17 4.8-4.2 3.4 3 2.6-2.2 4.2 3.4"/>',
 };
-/** svg(name, {size, color, width}) */
 function svg(name, o = {}) {
   const s = o.size || 20, c = o.color || 'currentColor', w = o.width || 1.6;
   return '<svg width="' + s + '" height="' + s + '" viewBox="0 0 24 24" fill="none" stroke="' + c +
     '" stroke-width="' + w + '" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICON[name] + '</svg>';
 }
+const trashBtn = (act, attrs, label) =>
+  '<button class="del" data-act="' + act + '" ' + attrs + ' aria-label="' + label + '">' +
+  svg('trash', { size:15, color:'#B43232', width:1.5 }) + '</button>';
 
 /* ============================ состояние ============================ */
 
-const KEY = 'owls.day-tracker.v1';
+const KEY = 'owls.day-tracker.v1';   // ключ хранения не меняем, чтобы данные пережили обновление
 
 function seed() {
+  const day = t => ({ days:[...EVERYDAY], time:t });
   return {
+    v: 2,
     tab: 'check',
     dayKey: dayKeyOf(new Date()),
     items: {
       morning: [
-        { id:'m1', text:'Стакан воды',             time:'07:00', done:false },
-        { id:'m2', text:'Зарядка 15 минут',        time:'07:20', done:false },
-        { id:'m3', text:'Прочитать установку дня', time:'07:40', done:false },
-        { id:'m4', text:'Завтрак без телефона',    time:'08:10', done:false },
+        { id:'m1', text:'Стакан воды',             done:false, ...day('07:00') },
+        { id:'m2', text:'Зарядка 15 минут',        done:false, ...day('07:20') },
+        { id:'m3', text:'Прочитать установку дня', done:false, ...day('07:40') },
+        { id:'m4', text:'Завтрак без телефона',    done:false, ...day('08:10') },
       ],
       day: [
-        { id:'d1', text:'Три главные задачи',   time:'10:00', done:false },
-        { id:'d2', text:'Прогулка 30 минут',    time:'13:00', done:false },
-        { id:'d3', text:'Без сахара до вечера', time:'',      done:false },
-        { id:'d4', text:'Разобрать входящие',   time:'17:00', done:false },
+        { id:'d1', text:'Три главные задачи',   done:false, days:[...WEEKDAY_SET], time:'10:00' },
+        { id:'d2', text:'Прогулка 30 минут',    done:false, ...day('13:00') },
+        { id:'d3', text:'Без сахара до вечера', done:false, ...day('') },
+        { id:'d4', text:'Разобрать входящие',   done:false, days:[...WEEKDAY_SET], time:'17:00' },
       ],
       evening: [
-        { id:'e1', text:'Растяжка 10 минут',          time:'21:00', done:false },
-        { id:'e2', text:'Дневник дня',                time:'21:30', done:false },
-        { id:'e3', text:'Телефон в другую комнату',   time:'22:30', done:false },
+        { id:'e1', text:'Растяжка 10 минут',        done:false, ...day('21:00') },
+        { id:'e2', text:'Дневник дня',              done:false, ...day('21:30') },
+        { id:'e3', text:'Телефон в другую комнату', done:false, ...day('22:30') },
       ],
     },
     moments: [
@@ -98,26 +137,25 @@ function seed() {
       { id:'q5', label:'Записать мысль',     count:0 },
     ],
     intentions: [
-      { id:'i1', text:'Я делаю меньше, но лучше.',   reps:0 },
-      { id:'i2', text:'Спокойствие — это скорость.', reps:0 },
-      { id:'i3', text:'Тело первое, задачи вторые.', reps:0 },
-      { id:'i4', text:'Я замечаю то, что уже есть.', reps:0 },
+      { id:'i1', text:'Я делаю меньше, но лучше.'   },
+      { id:'i2', text:'Спокойствие — это скорость.' },
+      { id:'i3', text:'Тело первое, задачи вторые.' },
+      { id:'i4', text:'Я замечаю то, что уже есть.' },
     ],
-    active: 'i1',
     wishes: [
-      { id:'w1', text:'Полка для книг у окна',           cat:'Дом',          note:'Дуб, 180 см',        due:'', done:false },
-      { id:'w2', text:'Пробежать 10 км без остановки',   cat:'Тело',         note:'Сейчас 6,5 км',      due:'', done:false },
-      { id:'w3', text:'Поехать в Тбилиси на неделю',     cat:'Путешествия',  note:'Вдвоём, 7 дней',     due:'', done:false },
+      { id:'w1', text:'Полка для книг у окна',         cat:'Дом',         note:'Дуб, 180 см',    due:'', done:false, photo:'' },
+      { id:'w2', text:'Пробежать 10 км без остановки', cat:'Тело',        note:'Сейчас 6,5 км',  due:'', done:false, photo:'' },
+      { id:'w3', text:'Поехать в Тбилиси на неделю',   cat:'Путешествия', note:'Вдвоём, 7 дней', due:'', done:false, photo:'' },
     ],
     stops: [
-      { id:'s1', text:'Телефон в кровати',          clean:0, slipped:false },
-      { id:'s2', text:'Сериалы в рабочее время',    clean:0, slipped:false },
-      { id:'s3', text:'Сладкое после 19:00',        clean:0, slipped:false },
+      { id:'s1', text:'Телефон в кровати',       clean:0, slipped:false },
+      { id:'s2', text:'Сериалы в рабочее время', clean:0, slipped:false },
+      { id:'s3', text:'Сладкое после 19:00',     clean:0, slipped:false },
     ],
     mood: 2,
     fields: { good:'', hard:'', thanks:'' },
     entries: [],
-    history: [],           // дни, в которые был отмечен хотя бы один пункт
+    history: [],
   };
 }
 
@@ -128,22 +166,39 @@ function load() {
     const raw = localStorage.getItem(KEY);
     if (!raw) return seed();
     const s = Object.assign(seed(), JSON.parse(raw));
-    // подстраховка на случай частично повреждённых данных
     for (const p of PHASES) if (!Array.isArray(s.items?.[p.key])) { s.items = seed().items; break; }
     if (!Array.isArray(s.history)) s.history = [];
-    return s;
+    return migrate(s);
   } catch (e) {
     console.warn('Не удалось прочитать сохранение, начинаем заново.', e);
     return seed();
   }
 }
 
+/** Данные первой версии: у пунктов не было периодичности, у желаний — фото. */
+function migrate(s) {
+  for (const p of PHASES) {
+    s.items[p.key] = s.items[p.key].map(i => ({
+      ...i,
+      time: i.time || '',
+      days: Array.isArray(i.days) ? i.days : [...EVERYDAY],
+    }));
+  }
+  s.wishes = (s.wishes || []).map(w => ({ ...w, photo: w.photo || '' }));
+  s.intentions = (s.intentions || []).map(i => ({ id: i.id, text: i.text }));
+  if (!TITLES[s.tab]) s.tab = 'check';   // вкладки «Установки» больше нет
+  s.v = 2;
+  return s;
+}
+
 let saveWarned = false;
 function save() {
   try {
     localStorage.setItem(KEY, JSON.stringify(S));
+    return true;
   } catch (e) {
-    if (!saveWarned) { saveWarned = true; toast('Не удалось сохранить — нет места в хранилище'); }
+    if (!saveWarned) { saveWarned = true; toast('Не хватает места в хранилище — удалите часть фото'); }
+    return false;
   }
 }
 
@@ -152,8 +207,7 @@ function rollover() {
   const today = dayKeyOf(new Date());
   if (S.dayKey === today) return;
 
-  const hadDone = PHASES.some(p => S.items[p.key].some(i => i.done)) ||
-                  S.moments.some(m => m.count > 0);
+  const hadDone = PHASES.some(p => S.items[p.key].some(i => i.done)) || S.moments.some(m => m.count > 0);
   if (hadDone && !S.history.includes(S.dayKey)) S.history.push(S.dayKey);
   S.history = S.history.slice(-400);
 
@@ -172,34 +226,28 @@ function streak() {
   const todayActive = PHASES.some(p => S.items[p.key].some(i => i.done)) || S.moments.some(m => m.count > 0);
   let n = 0;
   let cur = todayActive ? today : addDays(today, -1);
-  while (true) {
+  while (n <= 400) {
     const k = dayKeyOf(cur);
     if (k === dayKeyOf(today)) { if (!todayActive) break; }
     else if (!set.has(k)) break;
     n++;
     cur = addDays(cur, -1);
-    if (n > 400) break;
   }
   return n;
 }
 
-/* ============================ рендер ============================ */
+/* ============================ общий рендер ============================ */
 
 const $screen = document.getElementById('screen');
 const $nav = document.getElementById('nav');
+const $sheet = document.getElementById('sheet');
+const $sheetBody = document.getElementById('sheet-body');
+const $seg = document.getElementById('seg');
 
-function headerDate() {
+const headerDate = () => {
   const d = new Date();
   return d.getDate() + ' ' + MONTHS[d.getMonth()] + ', ' + WEEKDAYS[d.getDay()];
-}
-
-const TABS = [
-  { key:'check', icon:'check', label:'Чек-лист'  },
-  { key:'stop',  icon:'stop',  label:'Стоп-лист' },
-  { key:'set',   icon:'set',   label:'Установки' },
-  { key:'wish',  icon:'wish',  label:'Wish list' },
-  { key:'diary', icon:'diary', label:'Дневник'   },
-];
+};
 
 function renderNav() {
   $nav.innerHTML = TABS.map(t => {
@@ -220,33 +268,35 @@ function ringSvg(pct, size, r, w) {
     '" transform="rotate(-90 ' + size/2 + ' ' + size/2 + ')"/></svg>';
 }
 
+const emptyHint = text =>
+  '<div class="dash">' + text + '<br><span style="color:var(--muted)">Списки настраиваются по нажатию на логотип.</span></div>';
+
 /* ---------- экран: чек-лист ---------- */
 function viewCheck() {
-  const all = PHASES.flatMap(p => S.items[p.key]);
+  const today = PHASES.map(p => ({ p, list: S.items[p.key].filter(onToday) }));
+  const all = today.flatMap(g => g.list);
   const done = all.filter(i => i.done).length, total = all.length;
   const pct = total ? done / total : 0;
   const next = all.find(i => !i.done);
   const st = streak();
 
-  let h = '';
-
-  h += '<div class="card ring-card">' +
+  let h = '<div class="card ring-card">' +
     '<div class="ring">' + ringSvg(pct, 78, 31, 8) + '<div class="pct">' + Math.round(pct * 100) + '%</div></div>' +
     '<div class="grow" style="display:flex;flex-direction:column;gap:6px">' +
       '<span class="done-line">' + done + ' из ' + total + ' ' + plural(total, 'пункта', 'пунктов', 'пунктов') + '</span>' +
-      '<span class="hint">' + (total === 0 ? 'Пунктов пока нет. Добавьте первый.'
+      '<span class="hint">' + (total === 0 ? 'На сегодня пунктов нет.'
         : next ? 'Дальше: ' + esc(next.text.toLowerCase()) : 'День закрыт полностью. Можно выдохнуть.') + '</span>' +
     '</div></div>';
 
   if (st > 0) {
-    const today = new Date();
-    const monday = addDays(today, -((today.getDay() + 6) % 7));
+    const now = new Date();
+    const monday = addDays(now, -((now.getDay() + 6) % 7));
     const hist = new Set(S.history);
-    const todayActive = PHASES.some(p => S.items[p.key].some(i => i.done)) || S.moments.some(m => m.count > 0);
-    const week = ['пн','вт','ср','чт','пт','сб','вс'].map((label, i) => {
+    const active = PHASES.some(p => S.items[p.key].some(i => i.done)) || S.moments.some(m => m.count > 0);
+    const week = DOW.map((d, i) => {
       const k = dayKeyOf(addDays(monday, i));
-      const on = hist.has(k) || (k === dayKeyOf(today) && todayActive);
-      return '<div><i class="dot' + (on ? ' on' : '') + '"></i><span>' + label + '</span></div>';
+      const on = hist.has(k) || (k === dayKeyOf(now) && active);
+      return '<div><i class="dot' + (on ? ' on' : '') + '"></i><span>' + d.s + '</span></div>';
     }).join('');
     h += '<div class="streak"><div style="display:flex;flex-direction:column;gap:3px">' +
       '<span class="streak-n">' + st + ' ' + plural(st, 'день', 'дня', 'дней') + ' подряд</span>' +
@@ -254,125 +304,82 @@ function viewCheck() {
       '<div class="week">' + week + '</div></div>';
   }
 
-  const marks = S.moments.reduce((a, m) => a + m.count, 0);
-  h += '<div class="card" style="padding:16px 16px 14px;display:flex;flex-direction:column;gap:12px">' +
-    '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">' +
-      '<div class="grow" style="display:flex;flex-direction:column;gap:4px">' +
-        '<span class="eyebrow">В моменте</span>' +
-        '<span class="hint">Без привязки ко времени. Отметьте, когда сделали.</span></div>' +
-      '<span style="font-size:11.5px;color:var(--faint);flex:none">' +
-        (marks ? 'Сегодня ' + marks + ' ' + plural(marks, 'отметка', 'отметки', 'отметок') : 'Пока без отметок') +
-      '</span></div><div class="chips">' +
-    S.moments.map(m =>
-      '<button class="chip' + (m.count ? ' on' : '') + '" data-act="moment" data-id="' + m.id + '">' +
-        (m.count ? '' : svg('plus', { size:13, color:'#9AA1AB', width:2 })) +
-        '<span>' + esc(m.label) + '</span>' +
-        (m.count ? '<span class="badge">×' + m.count + '</span>' : '') + '</button>').join('') +
-    '</div></div>';
+  if (S.moments.length) {
+    const marks = S.moments.reduce((a, m) => a + m.count, 0);
+    h += '<div class="card" style="padding:16px 16px 14px;display:flex;flex-direction:column;gap:12px">' +
+      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">' +
+        '<div class="grow" style="display:flex;flex-direction:column;gap:4px">' +
+          '<span class="eyebrow">В моменте</span>' +
+          '<span class="hint">Без привязки ко времени. Отметьте, когда сделали.</span></div>' +
+        '<span style="font-size:11.5px;color:var(--faint);flex:none">' +
+          (marks ? 'Сегодня ' + marks + ' ' + plural(marks, 'отметка', 'отметки', 'отметок') : 'Пока без отметок') +
+        '</span></div><div class="chips">' +
+      S.moments.map(m =>
+        '<button class="chip' + (m.count ? ' on' : '') + '" data-act="moment" data-id="' + m.id + '">' +
+          (m.count ? '' : svg('plus', { size:13, color:'#9AA1AB', width:2 })) +
+          '<span>' + esc(m.label) + '</span>' +
+          (m.count ? '<span class="badge">×' + m.count + '</span>' : '') + '</button>').join('') +
+      '</div></div>';
+  }
 
-  for (const p of PHASES) {
-    const list = S.items[p.key];
+  for (const { p, list } of today) {
+    if (!list.length) continue;
     const d = list.filter(i => i.done).length;
-    const w = list.length ? Math.round((d / list.length) * 100) : 0;
+    const w = Math.round((d / list.length) * 100);
     h += '<section class="card flush">' +
       '<div class="grp-h"><div class="row">' +
         svg(p.key, { size:17, color: p.key === 'morning' ? 'var(--accent)' : 'var(--ink)', width:1.5 }) +
         '<span class="sec-t grow">' + p.name + '</span>' +
-        '<span style="font-size:11.5px;color:var(--muted)">' + (list.length ? d + ' / ' + list.length : '—') + '</span>' +
+        '<span style="font-size:11.5px;color:var(--muted)">' + d + ' / ' + list.length + '</span>' +
       '</div><div class="bar"><i style="width:' + w + '%"></i></div></div>' +
-      (list.length ? list.map(i =>
-        '<div class="item' + (i.done ? ' is-done' : '') + '">' +
-          '<button class="row grow" data-act="item" data-phase="' + p.key + '" data-id="' + i.id + '" style="min-height:40px">' +
-            '<span class="box' + (i.done ? ' on' : '') + '">' + (i.done ? svg('tick', { size:13, color:'#fff', width:3 }) : '') + '</span>' +
-            '<span class="txt">' + esc(i.text) + '</span></button>' +
+      list.map(i =>
+        '<button class="item' + (i.done ? ' is-done' : '') + '" data-act="item" data-phase="' + p.key + '" data-id="' + i.id + '">' +
+          '<span class="box' + (i.done ? ' on' : '') + '">' + (i.done ? svg('tick', { size:13, color:'#fff', width:3 }) : '') + '</span>' +
+          '<span class="txt">' + esc(i.text) + '</span>' +
           (i.time ? '<span class="time">' + esc(i.time) + '</span>' : '') +
-          '<button class="del" data-act="del-item" data-phase="' + p.key + '" data-id="' + i.id + '" aria-label="Удалить пункт">' +
-            svg('trash', { size:15, color:'#B43232', width:1.5 }) + '</button>' +
-        '</div>').join('')
-        : '<div class="empty">Пока пусто. Добавьте первый пункт.</div>') +
-      '<div class="add"><input type="text" data-draft="item:' + p.key + '" placeholder="' + p.placeholder +
-        '" enterkeyhint="done" autocomplete="off">' +
-        '<button class="plus" data-act="add-item" data-phase="' + p.key + '" aria-label="Добавить">' +
-        svg('plus', { size:17, color:'#fff', width:2.2 }) + '</button></div>' +
+        '</button>').join('') +
       '</section>';
   }
+
+  if (!total && !S.moments.length) h += emptyHint('Чек-лист пуст.');
   return h;
 }
 
 /* ---------- экран: стоп-лист ---------- */
 function viewStop() {
+  if (!S.stops.length) return emptyHint('Стоп-лист пуст.');
   const holding = S.stops.filter(x => !x.slipped).length;
-  let h = '<div class="card pad row" style="gap:16px">' +
-    '<span class="stop-ic">' + svg('stop', { size:24, color:'var(--accent)', width:1.5 }) + '</span>' +
-    '<div class="grow" style="display:flex;flex-direction:column;gap:4px">' +
-      '<span class="big">' + (S.stops.length ? holding + ' из ' + S.stops.length + ' держатся' : 'Пока пусто') + '</span>' +
-      '<span class="hint">' + (S.stops.some(x => x.slipped)
-        ? 'Один срыв не отменяет день. Отмечайте честно.'
-        : 'Ни одного срыва сегодня. Так и держите.') + '</span></div></div>';
-
-  h += '<section class="card flush">' +
-    '<div class="sec-h"><span class="sec-t">Чего не делаю</span>' +
-    '<span class="sec-s">Нажмите, если сорвались — серия обнулится</span></div>' +
-    (S.stops.length ? S.stops.map(x =>
-      '<div class="item" style="min-height:60px;padding:12px 16px">' +
-        '<button class="row grow" data-act="stop" data-id="' + x.id + '" style="align-items:flex-start">' +
-          '<span class="grow" style="display:flex;flex-direction:column;gap:5px;text-align:left">' +
+  return '<div class="card pad row" style="gap:16px">' +
+      '<span class="stop-ic">' + svg('stop', { size:24, color:'var(--accent)', width:1.5 }) + '</span>' +
+      '<div class="grow" style="display:flex;flex-direction:column;gap:4px">' +
+        '<span class="big">' + holding + ' из ' + S.stops.length + ' держатся</span>' +
+        '<span class="hint">' + (S.stops.some(x => x.slipped)
+          ? 'Один срыв не отменяет день. Отмечайте честно.'
+          : 'Ни одного срыва сегодня. Так и держите.') + '</span></div></div>' +
+    '<section class="card flush">' +
+      '<div class="sec-h"><span class="sec-t">Чего не делаю</span>' +
+      '<span class="sec-s">Нажмите, если сорвались — серия обнулится</span></div>' +
+      S.stops.map(x =>
+        '<button class="item" data-act="stop" data-id="' + x.id + '" style="min-height:60px;padding:12px 16px;align-items:flex-start">' +
+          '<span class="grow" style="display:flex;flex-direction:column;gap:5px">' +
             '<span style="font-size:14px;font-weight:600;line-height:1.35">' + esc(x.text) + '</span>' +
             '<span style="font-size:11.5px;color:var(--faint)">' +
               (x.slipped ? 'Серия сброшена сегодня' : 'Чисто ' + x.clean + ' ' + plural(x.clean, 'день', 'дня', 'дней')) +
             '</span></span>' +
-          '<span class="pill ' + (x.slipped ? 'bad">Сорвался' : 'ok">Держусь') + '</span></button>' +
-        '<button class="del" data-act="del-stop" data-id="' + x.id + '" aria-label="Удалить запрет">' +
-          svg('trash', { size:15, color:'#B43232', width:1.5 }) + '</button></div>').join('')
-      : '<div class="empty">Стоп-лист пуст. Добавьте первый пункт.</div>') +
-    '<div class="add"><input type="text" data-draft="stop" placeholder="Новый запрет" enterkeyhint="done" autocomplete="off">' +
-      '<button class="plus" data-act="add-stop" aria-label="Добавить">' + svg('plus', { size:17, color:'#fff', width:2.2 }) +
-      '</button></div></section>';
-  return h;
-}
-
-/* ---------- экран: установки ---------- */
-function viewSet() {
-  const act = S.intentions.find(i => i.id === S.active) || S.intentions[0];
-  let h = '';
-  if (act) {
-    h += '<div class="intent">' +
-      '<span class="eyebrow">Установка дня</span>' +
-      '<span class="intent-t">' + esc(act.text) + '</span><div class="rule"></div>' +
-      '<div class="row" style="justify-content:space-between">' +
-        '<span class="reps">' + (act.reps
-          ? 'Повторено ' + act.reps + ' ' + plural(act.reps, 'раз', 'раза', 'раз') + ' сегодня'
-          : 'Сегодня ещё не повторяли') + '</span>' +
-        '<button class="btn-rep" data-act="repeat">' + svg('repeat', { size:15, color:'#fff', width:2 }) +
-        '<span>Повторить</span></button></div></div>';
-  }
-  h += '<section class="card flush">' +
-    '<div class="sec-h"><span class="sec-t">Мои установки</span><span class="sec-s">Нажмите, чтобы сделать активной</span></div>' +
-    (S.intentions.length ? S.intentions.map(i =>
-      '<div class="item" style="min-height:56px">' +
-        '<button class="row grow" data-act="pick" data-id="' + i.id + '">' +
-          '<span class="led' + (i.id === S.active ? ' on' : '') + '"></span>' +
-          '<span class="grow" style="font-size:14px;line-height:1.4;text-align:left">' + esc(i.text) + '</span>' +
-          (i.reps ? '<span class="time">×' + i.reps + '</span>' : '') + '</button>' +
-        '<button class="del" data-act="del-intent" data-id="' + i.id + '" aria-label="Удалить установку">' +
-          svg('trash', { size:15, color:'#B43232', width:1.5 }) + '</button></div>').join('')
-      : '<div class="empty">Установок пока нет. Запишите первую.</div>') +
-    '<div class="add"><input type="text" data-draft="set" placeholder="Новая установка" enterkeyhint="done" autocomplete="off">' +
-      '<button class="plus" data-act="add-intent" aria-label="Добавить">' + svg('plus', { size:17, color:'#fff', width:2.2 }) +
-      '</button></div></section>';
-  return h;
+          '<span class="pill ' + (x.slipped ? 'bad">Сорвался' : 'ok">Держусь') + '</span></button>').join('') +
+    '</section>';
 }
 
 /* ---------- экран: желания ---------- */
 function viewWish() {
+  if (!S.wishes.length) return emptyHint('Список желаний пуст.');
   const doneN = S.wishes.filter(w => w.done).length;
-  const pct = S.wishes.length ? doneN / S.wishes.length : 0;
-
-  const upcoming = S.wishes.filter(w => !w.done && w.due)
+  const pct = doneN / S.wishes.length;
+  const up = S.wishes.filter(w => !w.done && w.due)
     .map(w => ({ w, d: daysLeft(w.due) })).filter(x => x.d >= 0)
     .sort((a, b) => a.d - b.d)[0];
-  const nearest = upcoming
-    ? 'Ближайшее — ' + upcoming.w.text.toLowerCase() + ', ' + upcoming.d + ' ' + plural(upcoming.d, 'день', 'дня', 'дней')
+  const nearest = up
+    ? 'Ближайшее — ' + up.w.text.toLowerCase() + ', ' + up.d + ' ' + plural(up.d, 'день', 'дня', 'дней')
     : 'Ближайших дат нет';
 
   let h = '<div class="card pad row" style="justify-content:space-between">' +
@@ -382,83 +389,67 @@ function viewWish() {
       '<span style="font-size:12px;line-height:1.4;color:var(--ink-2)">' + esc(nearest) + '</span></div>' +
     ringSvg(pct, 46, 18, 6) + '</div>';
 
-  h += S.wishes.length ? '<div style="display:flex;flex-direction:column;gap:10px">' + S.wishes.map(w => {
+  h += '<div style="display:flex;flex-direction:column;gap:10px">' + S.wishes.map(w => {
     const left = w.due ? daysLeft(w.due) : null;
     const abs = left === null ? 0 : Math.abs(left);
-    let bottomLeft;
-    if (w.done) {
-      bottomLeft = '<span class="pill ok">Исполнено</span>';
-    } else if (w.due) {
-      bottomLeft = '<span style="display:flex;align-items:baseline;gap:7px">' +
-        '<span class="days' + (left < 0 ? ' over' : '') + '">' + abs + '</span>' +
-        '<span style="font-size:12px;color:var(--muted)">' +
-          plural(abs, 'день', 'дня', 'дней') + (left < 0 ? ' просрочено' : ' осталось') + '</span></span>';
-    } else {
-      bottomLeft = '<span style="font-size:12px;color:var(--faint)">Дата не указана</span>';
-    }
+    let bottom;
+    if (w.done) bottom = '<span class="pill ok">Исполнено</span>';
+    else if (w.due) bottom = '<span style="display:flex;align-items:baseline;gap:7px">' +
+      '<span class="days' + (left < 0 ? ' over' : '') + '">' + abs + '</span>' +
+      '<span style="font-size:12px;color:var(--muted)">' +
+        plural(abs, 'день', 'дня', 'дней') + (left < 0 ? ' просрочено' : ' осталось') + '</span></span>';
+    else bottom = '<span style="font-size:12px;color:var(--faint)">Дата не указана</span>';
+
+    const pic = w.photo
+      ? '<img class="wish-photo" src="' + w.photo + '" alt="">'
+      : '<span class="mono" aria-hidden="true">' + esc((w.text.trim()[0] || '•').toUpperCase()) + '</span>';
+
     return '<article class="card flush' + (w.done ? ' is-done' : '') + '">' +
-      '<div class="wish-top">' +
-        '<span class="mono" aria-hidden="true">' + esc((w.text.trim()[0] || '•').toUpperCase()) + '</span>' +
+      '<div class="wish-top">' + pic +
         '<div class="grow" style="display:flex;flex-direction:column;gap:8px">' +
           '<span class="wish-t">' + esc(w.text) + '</span>' +
           '<div class="row" style="flex-wrap:wrap;gap:8px">' +
-            '<span class="tag">' + esc(w.cat) + '</span>' +
+            (w.cat ? '<span class="tag">' + esc(w.cat) + '</span>' : '') +
             (w.note ? '<span style="font-size:12px;color:var(--muted)">' + esc(w.note) + '</span>' : '') +
           '</div></div>' +
         '<button data-act="wish" data-id="' + w.id + '" style="flex:none;padding:4px" aria-label="Отметить исполненным">' +
           '<span class="circ' + (w.done ? ' on' : '') + '">' + (w.done ? svg('tick', { size:13, color:'#fff', width:3 }) : '') +
           '</span></button></div>' +
-      '<div class="wish-b">' + bottomLeft +
-        '<span class="row" style="gap:7px;flex:none">' +
-          '<input class="date-in" type="date" value="' + esc(w.due || '') + '" data-act="wish-due" data-id="' + w.id +
-            '" aria-label="Дата желания">' +
-          '<button class="del" data-act="del-wish" data-id="' + w.id + '" aria-label="Удалить желание">' +
-            svg('trash', { size:15, color:'#B43232', width:1.5 }) + '</button></span>' +
-      '</div></article>';
-  }).join('') + '</div>'
-  : '<div class="dash">Список желаний пуст. Запишите первое.</div>';
-
-  h += '<div class="row" style="gap:10px">' +
-    '<input type="text" data-draft="wish" placeholder="Новое желание" enterkeyhint="done" autocomplete="off" ' +
-      'style="flex:1;min-width:0;height:46px;padding:0 14px;border:1px solid var(--line-input);border-radius:10px;background:#fff;font-size:16px">' +
-    '<button class="plus" data-act="add-wish" aria-label="Добавить" ' +
-      'style="width:46px;height:46px;border-radius:10px;background:var(--accent);display:grid;place-items:center;flex:none">' +
-      svg('plus', { size:18, color:'#fff', width:2.2 }) + '</button></div>';
+      '<div class="wish-b">' + bottom +
+        '<span class="row" style="gap:7px;flex:none">' + svg('cal', { size:14, color:'#9AA1AB', width:1.5 }) +
+          '<span style="font-size:12px;font-weight:600;color:var(--ink-2)">' + (w.due ? fmtDate(w.due) : '—') + '</span>' +
+        '</span></div></article>';
+  }).join('') + '</div>';
   return h;
 }
 
 /* ---------- экран: дневник ---------- */
 function viewDiary() {
-  let h = '<div class="card pad" style="display:flex;flex-direction:column;gap:14px">' +
-    '<span class="eyebrow">Как прошёл день</span><div class="moods">' +
-    MOODS.map((label, i) =>
-      '<button class="mood' + (S.mood === i ? ' on' : '') + '" data-act="mood" data-i="' + i + '">' +
-      '<i></i><span>' + label + '</span></button>').join('') +
-    '</div></div>';
-
-  h += '<div class="card pad" style="display:flex;flex-direction:column;gap:16px">' +
-    '<div class="fld"><label for="f-good">Что получилось</label>' +
-      '<textarea id="f-good" data-draft="good" rows="2" placeholder="Три строки хватит">' + esc(S.fields.good) + '</textarea></div>' +
-    '<div class="fld"><label for="f-hard">Что забрало силы</label>' +
-      '<textarea id="f-hard" data-draft="hard" rows="2" placeholder="Без оценок, просто факт">' + esc(S.fields.hard) + '</textarea></div>' +
-    '<div class="fld"><label for="f-thanks">Благодарность</label>' +
-      '<textarea id="f-thanks" data-draft="thanks" rows="2" placeholder="За что сегодня">' + esc(S.fields.thanks) + '</textarea></div>' +
-    '<button class="save" data-act="save-entry">Сохранить запись</button></div>';
-
-  h += '<section class="card flush">' +
-    '<div class="sec-h"><span class="sec-t">Прошлые записи</span></div>' +
-    (S.entries.length ? S.entries.map(e =>
-      '<div class="entry"><div class="row" style="gap:8px">' +
-        '<span class="entry-d">' + esc(e.date) + '</span><span class="tag">' + esc(e.mood) + '</span>' +
-        '<span class="grow"></span>' +
-        '<button class="del" data-act="del-entry" data-id="' + e.id + '" aria-label="Удалить запись">' +
-          svg('trash', { size:15, color:'#B43232', width:1.5 }) + '</button></div>' +
-        '<span class="entry-t">' + esc(e.text) + '</span></div>').join('')
-      : '<div class="empty">Записей пока нет.</div>') + '</section>';
-  return h;
+  return '<div class="card pad" style="display:flex;flex-direction:column;gap:14px">' +
+      '<span class="eyebrow">Как прошёл день</span><div class="moods">' +
+      MOODS.map((label, i) =>
+        '<button class="mood' + (S.mood === i ? ' on' : '') + '" data-act="mood" data-i="' + i + '">' +
+        '<i></i><span>' + label + '</span></button>').join('') +
+      '</div></div>' +
+    '<div class="card pad" style="display:flex;flex-direction:column;gap:16px">' +
+      '<div class="fld"><label for="f-good">Что получилось</label>' +
+        '<textarea id="f-good" data-draft="good" rows="2" placeholder="Три строки хватит">' + esc(S.fields.good) + '</textarea></div>' +
+      '<div class="fld"><label for="f-hard">Что забрало силы</label>' +
+        '<textarea id="f-hard" data-draft="hard" rows="2" placeholder="Без оценок, просто факт">' + esc(S.fields.hard) + '</textarea></div>' +
+      '<div class="fld"><label for="f-thanks">Благодарность</label>' +
+        '<textarea id="f-thanks" data-draft="thanks" rows="2" placeholder="За что сегодня">' + esc(S.fields.thanks) + '</textarea></div>' +
+      '<button class="save" data-act="save-entry">Сохранить запись</button></div>' +
+    '<section class="card flush">' +
+      '<div class="sec-h"><span class="sec-t">Прошлые записи</span></div>' +
+      (S.entries.length ? S.entries.map(e =>
+        '<div class="entry"><div class="row" style="gap:8px">' +
+          '<span class="entry-d">' + esc(e.date) + '</span><span class="tag">' + esc(e.mood) + '</span>' +
+          '<span class="grow"></span>' + trashBtn('del-entry', 'data-id="' + e.id + '"', 'Удалить запись') + '</div>' +
+          '<span class="entry-t">' + esc(e.text) + '</span></div>').join('')
+        : '<div class="empty">Записей пока нет.</div>') + '</section>';
 }
 
-const VIEWS = { check:viewCheck, stop:viewStop, set:viewSet, wish:viewWish, diary:viewDiary };
+const VIEWS = { check:viewCheck, stop:viewStop, wish:viewWish, diary:viewDiary };
 
 function render(keepScroll) {
   const y = keepScroll ? $screen.scrollTop : 0;
@@ -471,74 +462,248 @@ function render(keepScroll) {
   $screen.scrollTop = y;
 }
 
-/* ============================ действия ============================ */
+/* ============================ настройки ============================ */
 
-const drafts = { 'item:morning':'', 'item:day':'', 'item:evening':'', stop:'', set:'', wish:'' };
+const SHEET_TABS = [
+  { key:'check', label:'Чек-лист'  },
+  { key:'stop',  label:'Стоп-лист' },
+  { key:'set',   label:'Установки' },
+  { key:'wish',  label:'Желания'   },
+];
+
+let sheetOpen = false;
+let sheetTab = 'check';
+
+/* черновики форм живут вне состояния — их не нужно хранить между запусками */
+const F = {
+  item: { text:'', time:'', mode:'every', days:[...EVERYDAY] },
+  moment: '',
+  stop: '',
+  set: '',
+  wish: { text:'', due:'', photo:'' },
+};
+
+function daysFromMode() {
+  if (F.item.mode === 'every') return [...EVERYDAY];
+  if (F.item.mode === 'weekdays') return [...WEEKDAY_SET];
+  if (F.item.mode === 'weekend') return [...WEEKEND_SET];
+  return [...F.item.days];
+}
+
+function sheetCheck() {
+  const blk = phaseOfTime(F.item.time);
+  const blkName = PHASES.find(p => p.key === blk).name;
+  let h = '<div class="form">' +
+    '<span class="sec-t">Новый пункт</span>' +
+    '<div class="f"><label for="i-text">Название</label>' +
+      '<input id="i-text" type="text" data-f="item.text" value="' + esc(F.item.text) + '" placeholder="Например, прогулка 30 минут"></div>' +
+    '<div class="f2">' +
+      '<div class="f"><label for="i-time">Время</label>' +
+        '<input id="i-time" type="time" data-f="item.time" value="' + esc(F.item.time) + '"></div>' +
+      '<div class="f"><label for="i-mode">Периодичность</label>' +
+        '<select id="i-mode" data-f="item.mode">' +
+          '<option value="every"' + (F.item.mode === 'every' ? ' selected' : '') + '>Каждый день</option>' +
+          '<option value="weekdays"' + (F.item.mode === 'weekdays' ? ' selected' : '') + '>Будни</option>' +
+          '<option value="weekend"' + (F.item.mode === 'weekend' ? ' selected' : '') + '>Выходные</option>' +
+          '<option value="custom"' + (F.item.mode === 'custom' ? ' selected' : '') + '>Свои дни</option>' +
+        '</select></div></div>' +
+    (F.item.mode === 'custom'
+      ? '<div class="f"><label>Дни недели</label><div class="days">' +
+          DOW.map(d => '<button data-act="dow" data-n="' + d.n + '" class="' + (F.item.days.includes(d.n) ? 'on' : '') + '">' +
+            d.s + '</button>').join('') + '</div></div>'
+      : '') +
+    '<span class="note">Блок выбирается по времени. Этот пункт попадёт в <b>' + blkName + '</b>.</span>' +
+    '<button class="btn-add" data-act="add-item">Добавить пункт</button></div>';
+
+  for (const p of PHASES) {
+    const list = S.items[p.key];
+    if (!list.length) continue;
+    h += '<div class="blk">' + p.name + '</div>' + list.map(i =>
+      '<div class="mini"><span class="grow">' +
+        '<div class="m-t">' + esc(i.text) + '</div>' +
+        '<div class="m-s">' + (i.time ? esc(i.time) + ' · ' : '') + repeatLabel(i.days) + '</div></span>' +
+        trashBtn('del-item', 'data-phase="' + p.key + '" data-id="' + i.id + '"', 'Удалить пункт') + '</div>').join('');
+  }
+
+  h += '<div class="blk">В моменте</div>' +
+    '<div class="add"><input type="text" data-f="moment" value="' + esc(F.moment) +
+      '" placeholder="Отметка без времени" enterkeyhint="done">' +
+      '<button class="plus" data-act="add-moment" aria-label="Добавить">' + svg('plus', { size:17, color:'#fff', width:2.2 }) +
+      '</button></div>' +
+    S.moments.map(m => '<div class="mini"><span class="grow m-t">' + esc(m.label) + '</span>' +
+      trashBtn('del-moment', 'data-id="' + m.id + '"', 'Удалить отметку') + '</div>').join('');
+  return h;
+}
+
+function sheetStop() {
+  return '<div class="form">' +
+      '<span class="sec-t">Новый запрет</span>' +
+      '<div class="f"><label for="s-text">Чего не делаю</label>' +
+        '<input id="s-text" type="text" data-f="stop" value="' + esc(F.stop) + '" placeholder="Например, телефон в кровати"></div>' +
+      '<button class="btn-add" data-act="add-stop">Добавить запрет</button></div>' +
+    (S.stops.length ? S.stops.map(x =>
+      '<div class="mini"><span class="grow">' +
+        '<div class="m-t">' + esc(x.text) + '</div>' +
+        '<div class="m-s">' + (x.slipped ? 'Сорвался сегодня' : 'Чисто ' + x.clean + ' ' + plural(x.clean, 'день', 'дня', 'дней')) + '</div>' +
+      '</span>' + trashBtn('del-stop', 'data-id="' + x.id + '"', 'Удалить запрет') + '</div>').join('')
+      : '<div class="empty">Пока пусто.</div>');
+}
+
+function sheetSet() {
+  return '<div class="form">' +
+      '<span class="sec-t">Новая установка</span>' +
+      '<div class="f"><label for="t-text">Текст</label>' +
+        '<input id="t-text" type="text" data-f="set" value="' + esc(F.set) + '" placeholder="Например, я делаю меньше, но лучше"></div>' +
+      '<span class="note">Одна из установок показывается на заставке при запуске.</span>' +
+      '<button class="btn-add" data-act="add-intent">Добавить установку</button></div>' +
+    (S.intentions.length ? S.intentions.map(i =>
+      '<div class="mini"><span class="grow m-t">' + esc(i.text) + '</span>' +
+      trashBtn('del-intent', 'data-id="' + i.id + '"', 'Удалить установку') + '</div>').join('')
+      : '<div class="empty">Пока пусто.</div>');
+}
+
+function sheetWish() {
+  const pic = F.wish.photo
+    ? '<img class="thumb-lg" src="' + F.wish.photo + '" alt="">'
+    : '<span class="thumb-lg ph-empty">Без<br>фото</span>';
+  return '<div class="form">' +
+      '<span class="sec-t">Новое желание</span>' +
+      '<div class="f"><label for="w-text">Название</label>' +
+        '<input id="w-text" type="text" data-f="wish.text" value="' + esc(F.wish.text) + '" placeholder="Например, курс по керамике"></div>' +
+      '<div class="f"><label for="w-due">Дата</label>' +
+        '<input id="w-due" type="date" data-f="wish.due" value="' + esc(F.wish.due) + '"></div>' +
+      '<div class="f"><label>Фото</label><div class="row" style="gap:12px">' + pic +
+        '<button class="btn-ghost" data-act="pick-photo" data-target="draft">' +
+          svg('photo', { size:16, color:'#6B7280', width:1.5 }) + '<span>' + (F.wish.photo ? 'Заменить' : 'Выбрать фото') + '</span></button>' +
+        (F.wish.photo ? '<button class="btn-ghost" data-act="drop-photo">Убрать</button>' : '') +
+      '</div></div>' +
+      '<button class="btn-add" data-act="add-wish">Добавить желание</button></div>' +
+    (S.wishes.length ? S.wishes.map(w => {
+      const t = w.photo ? '<img class="thumb" src="' + w.photo + '" alt="">' : '<span class="thumb ph-empty">Нет<br>фото</span>';
+      return '<div class="mini">' + t + '<span class="grow">' +
+        '<div class="m-t">' + esc(w.text) + '</div>' +
+        '<div class="m-s">' + (w.due ? 'до ' + fmtDate(w.due) : 'без даты') + (w.done ? ' · исполнено' : '') + '</div></span>' +
+        '<button class="del" data-act="pick-photo" data-target="' + w.id + '" aria-label="Фото желания">' +
+          svg('photo', { size:16, color:'#6B7280', width:1.5 }) + '</button>' +
+        trashBtn('del-wish', 'data-id="' + w.id + '"', 'Удалить желание') + '</div>';
+    }).join('') : '<div class="empty">Пока пусто.</div>');
+}
+
+const SHEET_VIEWS = { check:sheetCheck, stop:sheetStop, set:sheetSet, wish:sheetWish };
+
+function renderSheet() {
+  $seg.innerHTML = SHEET_TABS.map(t =>
+    '<button data-act="sheet-tab" data-tab="' + t.key + '" class="' + (sheetTab === t.key ? 'on' : '') + '">' +
+    t.label + '</button>').join('');
+  $sheetBody.innerHTML = (SHEET_VIEWS[sheetTab] || sheetCheck)();
+}
+
+function openSheet() {
+  sheetOpen = true;
+  renderSheet();
+  $sheet.classList.add('open');
+  $sheet.setAttribute('aria-hidden', 'false');
+}
+function closeSheet() {
+  sheetOpen = false;
+  $sheet.classList.remove('open');
+  $sheet.setAttribute('aria-hidden', 'true');
+  render(false);
+}
+
+/* ============================ фото ============================ */
+
+const $photo = document.getElementById('photo-input');
+let photoTarget = null;
+
+/** Уменьшаем снимок перед сохранением — иначе хранилище переполнится. */
+function shrink(file, max = 420, q = 0.72) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(img.width * k));
+      c.height = Math.max(1, Math.round(img.height * k));
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL('image/jpeg', q));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('не изображение')); };
+    img.src = url;
+  });
+}
+
+$photo.addEventListener('change', async () => {
+  const file = $photo.files && $photo.files[0];
+  $photo.value = '';
+  if (!file || !photoTarget) return;
+  try {
+    const data = await shrink(file);
+    if (photoTarget === 'draft') {
+      F.wish.photo = data;
+    } else {
+      const w = S.wishes.find(x => x.id === photoTarget);
+      if (w) { w.photo = data; if (!save()) w.photo = ''; }
+    }
+    renderSheet();
+  } catch (e) {
+    toast('Не удалось прочитать изображение');
+  } finally {
+    photoTarget = null;
+  }
+});
+
+/* ============================ заставка ============================ */
+
+function splash() {
+  const el = document.getElementById('splash');
+  if (!S.intentions.length) { el.remove(); return; }
+  const pick = S.intentions[Math.floor(Math.random() * S.intentions.length)];
+  document.getElementById('splash-text').textContent = pick.text;
+  el.hidden = false;
+  const hide = () => {
+    el.classList.add('hide');
+    setTimeout(() => el.remove(), 600);
+  };
+  const t = setTimeout(hide, 2200);
+  el.addEventListener('click', () => { clearTimeout(t); hide(); }, { once: true });
+}
+
+/* ============================ действия ============================ */
 
 let toastTimer;
 function toast(msg) {
   const el = document.getElementById('toast');
   el.textContent = msg; el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 2000);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
 }
 
 function commit(keepScroll = true) { save(); render(keepScroll); }
+function commitSheet() { save(); renderSheet(); }
 
 const ACTIONS = {
+  /* навигация */
   tab(el) { S.tab = el.dataset.tab; save(); render(false); },
+  settings() { openSheet(); },
+  'close-settings'() { closeSheet(); },
+  'sheet-tab'(el) { sheetTab = el.dataset.tab; renderSheet(); },
 
+  /* главный экран */
   item(el) {
-    const list = S.items[el.dataset.phase];
-    const i = list.find(x => x.id === el.dataset.id);
+    const i = S.items[el.dataset.phase].find(x => x.id === el.dataset.id);
     if (i) { i.done = !i.done; commit(); }
   },
-  'del-item'(el) {
-    S.items[el.dataset.phase] = S.items[el.dataset.phase].filter(x => x.id !== el.dataset.id);
-    commit();
-  },
-  'add-item'(el) {
-    const phase = el.dataset.phase;
-    const text = (drafts['item:' + phase] || '').trim();
-    if (!text) return;
-    S.items[phase].push({ id: uid(phase), text, time:'', done:false });
-    drafts['item:' + phase] = '';
-    commit();
-  },
-
   moment(el) {
     const m = S.moments.find(x => x.id === el.dataset.id);
     if (m) { m.count += 1; commit(); }
   },
-
   stop(el) {
     const x = S.stops.find(y => y.id === el.dataset.id);
     if (x) { x.slipped = !x.slipped; if (x.slipped) x.clean = 0; commit(); }
   },
-  'del-stop'(el) { S.stops = S.stops.filter(x => x.id !== el.dataset.id); commit(); },
-  'add-stop'() {
-    const text = drafts.stop.trim(); if (!text) return;
-    S.stops.push({ id: uid('s'), text, clean:0, slipped:false });
-    drafts.stop = ''; commit();
-  },
-
-  pick(el) { S.active = el.dataset.id; commit(); },
-  repeat() {
-    const i = S.intentions.find(x => x.id === S.active);
-    if (i) { i.reps += 1; commit(); }
-  },
-  'del-intent'(el) {
-    S.intentions = S.intentions.filter(x => x.id !== el.dataset.id);
-    if (S.active === el.dataset.id) S.active = S.intentions[0]?.id || null;
-    commit();
-  },
-  'add-intent'() {
-    const text = drafts.set.trim(); if (!text) return;
-    const id = uid('i');
-    S.intentions.unshift({ id, text, reps:0 });
-    S.active = id; drafts.set = ''; commit();
-  },
-
   wish(el) {
     const w = S.wishes.find(x => x.id === el.dataset.id);
     if (!w) return;
@@ -546,13 +711,6 @@ const ACTIONS = {
     w.doneAt = w.done ? dayKeyOf(new Date()) : undefined;
     commit();
   },
-  'del-wish'(el) { S.wishes = S.wishes.filter(x => x.id !== el.dataset.id); commit(); },
-  'add-wish'() {
-    const text = drafts.wish.trim(); if (!text) return;
-    S.wishes.unshift({ id: uid('w'), text, cat:'Без раздела', note:'', due:'', done:false });
-    drafts.wish = ''; commit();
-  },
-
   mood(el) { S.mood = Number(el.dataset.i); commit(); },
   'save-entry'() {
     const f = S.fields;
@@ -565,6 +723,77 @@ const ACTIONS = {
     toast('Запись сохранена');
   },
   'del-entry'(el) { S.entries = S.entries.filter(x => x.id !== el.dataset.id); commit(); },
+
+  /* настройки: чек-лист */
+  dow(el) {
+    const n = Number(el.dataset.n);
+    const has = F.item.days.includes(n);
+    F.item.days = has ? F.item.days.filter(x => x !== n) : [...F.item.days, n];
+    renderSheet();
+  },
+  'add-item'() {
+    const text = F.item.text.trim();
+    if (!text) { toast('Введите название'); return; }
+    const days = daysFromMode();
+    if (!days.length) { toast('Выберите хотя бы один день'); return; }
+    const phase = phaseOfTime(F.item.time);
+    S.items[phase].push({ id: uid(phase), text, time: F.item.time, days, done:false });
+    S.items[phase].sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
+    F.item = { text:'', time:'', mode:'every', days:[...EVERYDAY] };
+    commitSheet();
+    toast('Пункт добавлен');
+  },
+  'del-item'(el) {
+    S.items[el.dataset.phase] = S.items[el.dataset.phase].filter(x => x.id !== el.dataset.id);
+    commitSheet();
+  },
+  'add-moment'() {
+    const text = F.moment.trim();
+    if (!text) return;
+    S.moments.push({ id: uid('q'), label: text, count: 0 });
+    F.moment = '';
+    commitSheet();
+  },
+  'del-moment'(el) { S.moments = S.moments.filter(x => x.id !== el.dataset.id); commitSheet(); },
+
+  /* настройки: стоп-лист */
+  'add-stop'() {
+    const text = F.stop.trim();
+    if (!text) { toast('Введите название'); return; }
+    S.stops.push({ id: uid('s'), text, clean:0, slipped:false });
+    F.stop = '';
+    commitSheet();
+    toast('Запрет добавлен');
+  },
+  'del-stop'(el) { S.stops = S.stops.filter(x => x.id !== el.dataset.id); commitSheet(); },
+
+  /* настройки: установки */
+  'add-intent'() {
+    const text = F.set.trim();
+    if (!text) { toast('Введите текст'); return; }
+    S.intentions.unshift({ id: uid('i'), text });
+    F.set = '';
+    commitSheet();
+    toast('Установка добавлена');
+  },
+  'del-intent'(el) { S.intentions = S.intentions.filter(x => x.id !== el.dataset.id); commitSheet(); },
+
+  /* настройки: желания */
+  'pick-photo'(el) { photoTarget = el.dataset.target; $photo.click(); },
+  'drop-photo'() { F.wish.photo = ''; renderSheet(); },
+  'add-wish'() {
+    const text = F.wish.text.trim();
+    if (!text) { toast('Введите название'); return; }
+    S.wishes.unshift({
+      id: uid('w'), text, cat:'', note:'',
+      due: F.wish.due, done:false, photo: F.wish.photo,
+    });
+    if (!save()) { S.wishes[0].photo = ''; save(); }
+    F.wish = { text:'', due:'', photo:'' };
+    renderSheet();
+    toast('Желание добавлено');
+  },
+  'del-wish'(el) { S.wishes = S.wishes.filter(x => x.id !== el.dataset.id); commitSheet(); },
 };
 
 /* делегирование: один слушатель на всё приложение */
@@ -575,50 +804,53 @@ document.addEventListener('click', e => {
   if (fn) { e.preventDefault(); fn(el); }
 });
 
-/* черновики полей — пишем в память без перерисовки, чтобы не терять фокус */
+/* поля: пишем в черновик без перерисовки, чтобы не терять фокус */
+function setField(path, value) {
+  const [a, b] = path.split('.');
+  if (b) F[a][b] = value; else F[a] = value;
+}
+
 document.addEventListener('input', e => {
   const el = e.target;
-  if (el.dataset.draft) {
-    if (el.dataset.draft in drafts) drafts[el.dataset.draft] = el.value;
-    else { S.fields[el.dataset.draft] = el.value; save(); }
-  }
+  if (el.dataset.f) { setField(el.dataset.f, el.value); return; }
+  if (el.dataset.draft) { S.fields[el.dataset.draft] = el.value; save(); }
 });
 
-/* дата у желания */
+/* change ловит то, что не даёт input: выбор в списке и подтверждение даты/времени */
 document.addEventListener('change', e => {
-  const el = e.target;
-  if (el.dataset.act === 'wish-due') {
-    const w = S.wishes.find(x => x.id === el.dataset.id);
-    if (w) { w.due = el.value; commit(); }
-  }
+  const f = e.target.dataset.f;
+  if (!f) return;
+  setField(f, e.target.value);
+  /* от времени зависит блок дня, от периодичности — набор дней: подсказку надо обновить */
+  if (f === 'item.mode' || f === 'item.time') renderSheet();
 });
 
-/* Enter в поле добавления */
+/* Enter в коротких полях */
 document.addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
-  const el = e.target;
-  const d = el.dataset?.draft;
-  if (!d || el.tagName === 'TEXTAREA') return;
+  const f = e.target.dataset?.f;
+  if (!f) return;
   e.preventDefault();
-  if (d.startsWith('item:')) ACTIONS['add-item']({ dataset: { phase: d.slice(5) } });
-  else if (d === 'stop') ACTIONS['add-stop']();
-  else if (d === 'set') ACTIONS['add-intent']();
-  else if (d === 'wish') ACTIONS['add-wish']();
+  if (f === 'moment') ACTIONS['add-moment']();
+  else if (f === 'stop') ACTIONS['add-stop']();
+  else if (f === 'set') ACTIONS['add-intent']();
+  else if (f.startsWith('item.')) ACTIONS['add-item']();
+  else if (f.startsWith('wish.')) ACTIONS['add-wish']();
 });
 
 /* вернулись в приложение — проверяем, не наступил ли новый день */
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') {
-    const before = S.dayKey;
-    rollover();
-    if (before !== S.dayKey) render(false);
-  }
+  if (document.visibilityState !== 'visible') return;
+  const before = S.dayKey;
+  rollover();
+  if (before !== S.dayKey) { render(false); if (sheetOpen) renderSheet(); }
 });
 
 /* ============================ старт ============================ */
 
 rollover();
 render(false);
+splash();
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   window.addEventListener('load', () => {

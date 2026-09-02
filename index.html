@@ -200,6 +200,97 @@ nav button.on .ul{width:16px;height:2px;border-radius:2px;background:var(--accen
   opacity:0;pointer-events:none;transition:opacity .22s ease
 }
 .toast.show{opacity:1}
+
+/* ---------- заставка ---------- */
+#splash{
+  position:fixed;inset:0;z-index:100;background:var(--ink);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:26px;padding:40px 32px;text-align:center;
+  transition:opacity .5s ease;
+}
+#splash.hide{opacity:0;pointer-events:none}
+#splash img{width:72px;height:72px;object-fit:contain;opacity:.95}
+#splash .s-eyebrow{font-family:var(--display);font-weight:400;font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.5)}
+#splash .s-text{font-family:var(--display);font-weight:700;font-size:clamp(19px,6.2vw,24px);line-height:1.35;letter-spacing:-.01em;color:#fff;max-width:20ch;text-wrap:pretty}
+#splash .s-rule{width:34px;height:2px;background:var(--accent)}
+
+/* ---------- лист настроек ---------- */
+#sheet{
+  position:fixed;inset:0;z-index:90;background:var(--bg);
+  display:flex;flex-direction:column;
+  width:100%;max-width:560px;margin:0 auto;
+  transform:translateY(100%);transition:transform .28s cubic-bezier(.3,0,.2,1);
+}
+#sheet.open{transform:translateY(0)}
+@media (min-width:600px){#sheet{position:absolute;height:100%}}
+.sh-hd{
+  flex:none;display:flex;align-items:center;gap:12px;
+  padding:calc(var(--sat) + 16px) calc(var(--sar) + 16px) 12px calc(var(--sal) + 16px);
+  border-bottom:1px solid var(--line);background:var(--bg);
+}
+.sh-hd .h1{font-size:20px}
+.sh-back{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;flex:none;border:1px solid var(--line);background:#fff}
+.sh-back:active{background:var(--line-soft)}
+.seg{
+  flex:none;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;
+  padding:12px calc(var(--sar) + 16px) 12px calc(var(--sal) + 16px);
+  border-bottom:1px solid var(--line);
+}
+.seg::-webkit-scrollbar{width:0;height:0}
+.seg button{
+  flex:none;min-height:38px;padding:0 14px;border-radius:999px;
+  border:1px solid var(--line-input);background:#fff;
+  font-size:13px;font-weight:600;color:var(--ink-2);white-space:nowrap;
+}
+.seg button.on{background:var(--ink);border-color:var(--ink);color:#fff}
+#sheet main{padding-bottom:calc(var(--sab) + 28px)}
+
+/* ---------- формы в настройках ---------- */
+.form{display:flex;flex-direction:column;gap:12px;padding:16px}
+.f{display:flex;flex-direction:column;gap:6px}
+.f > label{font-size:11.5px;font-weight:700;letter-spacing:.02em;color:var(--ink-2)}
+.f input[type=text],.f input[type=time],.f input[type=date],.f select{
+  width:100%;height:46px;padding:0 12px;font-size:16px;
+  border:1px solid var(--line-input);border-radius:10px;background:var(--bg);
+  font-family:var(--body);appearance:none;-webkit-appearance:none;
+}
+.f select{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2' stroke-linecap='round'><path d='m6 9 6 6 6-6'/></svg>");background-repeat:no-repeat;background-position:right 12px center;padding-right:44px;text-overflow:ellipsis}
+.f2{display:flex;gap:10px}
+.f2 > .f{flex:1;min-width:0}
+.days{display:flex;gap:6px;flex-wrap:wrap}
+.days button{
+  flex:1;min-width:38px;height:40px;border-radius:9px;
+  border:1px solid var(--line-input);background:#fff;
+  font-size:12px;font-weight:600;color:var(--ink-2);text-align:center;
+  display:grid;place-items:center;
+}
+.days button.on{background:var(--accent-soft);border-color:var(--accent);color:var(--ink)}
+.note{font-size:12px;color:var(--muted)}
+.note b{font-weight:700;color:var(--ink-2)}
+.btn-add{
+  height:48px;border-radius:10px;background:var(--accent);
+  display:grid;place-items:center;font-size:14px;font-weight:700;color:#fff;width:100%;
+}
+.btn-add:active{background:var(--accent-dark)}
+.btn-ghost{
+  height:44px;padding:0 14px;border-radius:10px;border:1px solid var(--line-input);
+  background:#fff;font-size:13px;font-weight:600;color:var(--ink-2);
+  display:inline-flex;align-items:center;gap:8px;
+}
+.btn-ghost:active{background:var(--line-soft)}
+
+/* строки списков в настройках */
+.mini{display:flex;align-items:center;gap:12px;padding:10px 16px;min-height:56px;border-bottom:1px solid var(--line-soft)}
+.mini .m-t{font-size:14px;line-height:1.35;color:var(--ink)}
+.mini .m-s{font-size:11.5px;color:var(--faint);margin-top:3px}
+.blk{font-family:var(--display);font-weight:400;font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);padding:16px 16px 8px}
+
+/* фото */
+.thumb{width:56px;height:56px;border-radius:10px;flex:none;object-fit:cover;background:var(--bg);border:1px solid var(--line-input)}
+.thumb-lg{width:84px;height:84px;border-radius:10px;flex:none;object-fit:cover;background:var(--bg);border:1px solid var(--line-input)}
+.ph-empty{display:grid;place-items:center;color:var(--faint);font-size:10px;text-align:center;line-height:1.2}
+.wish-photo{width:88px;height:88px;border-radius:10px;flex:none;object-fit:cover;border:1px solid var(--line-input)}
+
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -211,11 +302,28 @@ nav button.on .ul{width:16px;height:2px;border-radius:2px;background:var(--accen
       <span class="h1" id="title">День по частям</span>
       <span class="hd-date" id="today"></span>
     </div>
-    <div class="hd-mark"><img src="assets/owl-mark.png" alt="OWLS"></div>
+    <button class="hd-mark" data-act="settings" aria-label="Настройки"><img src="assets/owl-mark.png?v=2" alt="OWLS"></button>
   </header>
   <main id="screen"></main>
   <nav id="nav"></nav>
 </div>
+<div id="sheet" aria-hidden="true">
+  <header class="sh-hd">
+    <button class="sh-back" data-act="close-settings" aria-label="Назад">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0B1E35" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5-7 7 7 7"/></svg>
+    </button>
+    <span class="h1">Настройки</span>
+  </header>
+  <div class="seg" id="seg"></div>
+  <main id="sheet-body"></main>
+</div>
+<div id="splash" hidden>
+  <img src="assets/owl-mark.png?v=2" alt="">
+  <span class="s-eyebrow">Установка дня</span>
+  <span class="s-text" id="splash-text"></span>
+  <div class="s-rule"></div>
+</div>
+<input type="file" id="photo-input" accept="image/*" hidden>
 <div class="toast" id="toast"></div>
 <script src="app.js"></script>
 </body>

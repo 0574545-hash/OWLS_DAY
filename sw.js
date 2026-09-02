@@ -1,8 +1,8 @@
 /* Офлайн-кэш. Меняйте VERSION при выкладке новой версии. */
-const VERSION = 'owls-day-v1';
+const VERSION = 'owls-day-v2';
 const ASSETS = [
   './', './index.html', './app.js', './manifest.webmanifest',
-  './assets/owl-mark.png', './assets/icon-192.png', './assets/icon-512.png',
+  './assets/owl-mark.png?v=2', './assets/icon-192.png', './assets/icon-512.png',
 ];
 
 self.addEventListener('install', e => {
