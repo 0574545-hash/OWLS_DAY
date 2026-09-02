@@ -671,6 +671,74 @@ function splash() {
   el.addEventListener('click', () => { clearTimeout(t); hide(); }, { once: true });
 }
 
+
+/* ============================ радость ============================ */
+/* Всплеск частиц — для чек-листа, чипов, стоп-листа и дневника; сова — для желаний. */
+
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const $fx = document.getElementById('fx'), fxc = $fx.getContext('2d');
+let parts = [], fxRaf = null, dpr = 1;
+function fitFx() { dpr = Math.min(2, devicePixelRatio || 1); $fx.width = innerWidth * dpr; $fx.height = innerHeight * dpr; }
+fitFx(); addEventListener('resize', fitFx);
+const FX_COLORS = ['#F26336','#F26336','#0B1E35','#FFD9CC','#E9E5DC','#F9A98A'];
+
+function burst(x, y, n = 26) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, sp = 2.2 + Math.random() * 4.2;
+    parts.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 2.4, g:.16, life:1, dec:.016 + Math.random() * .012,
+      r: 2 + Math.random() * 3, c: FX_COLORS[i % FX_COLORS.length], rot: Math.random() * 6, vr:(Math.random() - .5) * .3, sq: Math.random() < .5 });
+  }
+  if (!fxRaf) fxRaf = requestAnimationFrame(fxTick);
+}
+function fxTick() {
+  fxc.clearRect(0, 0, $fx.width, $fx.height);
+  parts = parts.filter(p => p.life > 0);
+  for (const p of parts) {
+    p.x += p.vx; p.y += p.vy; p.vy += p.g; p.vx *= .985; p.life -= p.dec; p.rot += p.vr;
+    fxc.save(); fxc.globalAlpha = Math.max(0, p.life); fxc.fillStyle = p.c;
+    fxc.translate(p.x * dpr, p.y * dpr); fxc.rotate(p.rot);
+    const s = p.r * dpr;
+    if (p.sq) fxc.fillRect(-s, -s * .6, s * 2, s * 1.2); else { fxc.beginPath(); fxc.arc(0, 0, s, 0, Math.PI * 2); fxc.fill(); }
+    fxc.restore();
+  }
+  fxRaf = parts.length ? requestAnimationFrame(fxTick) : (fxc.clearRect(0, 0, $fx.width, $fx.height), null);
+}
+
+const OWL_WORDS = ['Исполнено.', 'Сбылось.', 'Можно выдохнуть.'];
+let owlTimer = null;
+function owlSay() {
+  const el = document.getElementById('owl');
+  document.getElementById('owl-w').textContent = OWL_WORDS[Math.floor(Math.random() * OWL_WORDS.length)];
+  el.classList.remove('go'); void el.offsetWidth; el.classList.add('go');
+  clearTimeout(owlTimer); owlTimer = setTimeout(() => el.classList.remove('go'), 1600);
+}
+
+/* вибрация: Android — да; iPhone Safari не даёт веб-страницам доступа к мотору */
+function buzz(pattern) { try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) { /* не поддерживается */ } }
+
+function animateOnce(el, cls) {
+  if (!el) return;
+  el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls);
+  el.addEventListener('animationend', () => el.classList.remove(cls), { once: true });
+}
+
+/** Всплеск из центра элемента. Вызывать ДО перерисовки — координаты берём с живого узла. */
+function splashAt(el) {
+  buzz([18, 30, 42]);
+  if (reducedMotion || !el) return null;
+  const r = el.getBoundingClientRect();
+  burst(r.left + r.width / 2, r.top + r.height / 2);
+  return true;
+}
+/** Сова — для желаний. */
+function owlFor(cardSelector) {
+  buzz([14, 40, 22]);
+  if (reducedMotion) return;
+  owlSay();
+  const btn = document.querySelector(cardSelector);
+  animateOnce(btn && btn.closest('article'), 'nudge');
+}
+
 /* ============================ действия ============================ */
 
 let toastTimer;
@@ -694,16 +762,29 @@ const ACTIONS = {
   /* главный экран */
   item(el) {
     const i = S.items[el.dataset.phase].find(x => x.id === el.dataset.id);
-    if (i) { i.done = !i.done; commit(); }
+    if (!i) return;
+    i.done = !i.done;
+    if (i.done) splashAt(el.querySelector('.box'));
+    commit();
+    if (i.done) animateOnce(document.querySelector('[data-act="item"][data-id="' + i.id + '"] .box'), 'pop');
   },
   moment(el) {
     if (holdFired) { holdFired = false; return; }   // клик после удержания — не считаем
     const m = S.moments.find(x => x.id === el.dataset.id);
-    if (m) { m.count += 1; commit(); }
+    if (!m) return;
+    m.count += 1;
+    splashAt(el);
+    commit();
+    animateOnce(document.querySelector('[data-act="moment"][data-id="' + m.id + '"]'), 'pop');
   },
   stop(el) {
     const x = S.stops.find(y => y.id === el.dataset.id);
-    if (x) { x.slipped = !x.slipped; if (x.slipped) x.clean = 0; commit(); }
+    if (!x) return;
+    x.slipped = !x.slipped;
+    if (x.slipped) x.clean = 0;
+    else splashAt(el.querySelector('.pill'));          // радость — когда снова «Держусь»
+    commit();
+    if (!x.slipped) animateOnce(document.querySelector('[data-act="stop"][data-id="' + x.id + '"] .pill'), 'pop');
   },
   wish(el) {
     const w = S.wishes.find(x => x.id === el.dataset.id);
@@ -711,6 +792,7 @@ const ACTIONS = {
     w.done = !w.done;
     w.doneAt = w.done ? dayKeyOf(new Date()) : undefined;
     commit();
+    if (w.done) owlFor('[data-act="wish"][data-id="' + w.id + '"]');
   },
   mood(el) { S.mood = Number(el.dataset.i); commit(); },
   'save-entry'() {
@@ -720,6 +802,7 @@ const ACTIONS = {
     const d = new Date();
     S.entries.unshift({ id: uid('x'), date: d.getDate() + ' ' + MONTHS[d.getMonth()], mood: MOODS[S.mood], text });
     S.fields = { good:'', hard:'', thanks:'' };
+    splashAt(document.querySelector('[data-act="save-entry"]'));
     commit(false);
     toast('Запись сохранена');
   },
