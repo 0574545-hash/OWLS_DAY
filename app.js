@@ -56,10 +56,29 @@ const MED_FORMS = {
   portion: { label:'Порция',   one:'порция',   few:'порции',   many:'порций'   },
 };
 const MED_MEAL = { before:'до еды', with:'во время еды', after:'после еды' };
+const MED_EVERY = { 1:'Ежедневно', 2:'Через день', 3:'Раз в 3 дня', 7:'Раз в неделю' };
+/** Приём сегодня? Отсчёт от дня добавления: каждые N дней. */
+function medToday(m) {
+  const every = Number(m.every) || 1;
+  if (every === 1) return true;
+  const diff = Math.round((parseKey(dayKeyOf(new Date())) - parseKey(m.start || dayKeyOf(new Date()))) / 86400000);
+  return diff >= 0 && diff % every === 0;
+}
+/** Через сколько дней следующий приём (0 — сегодня). */
+function medNextIn(m) {
+  const every = Number(m.every) || 1;
+  const diff = Math.round((parseKey(dayKeyOf(new Date())) - parseKey(m.start || dayKeyOf(new Date()))) / 86400000);
+  return diff < 0 ? -diff : (every - (diff % every)) % every;
+}
 /** «2 таблетки · после еды» */
 function medLine(m) {
   const f = MED_FORMS[m.form] || MED_FORMS.tab;
   return m.qty + ' ' + plural(m.qty, f.one, f.few, f.many) + ' · ' + (MED_MEAL[m.meal] || MED_MEAL.after);
+}
+/** …и частота, если не ежедневно: «2 таблетки · после еды · через день» */
+function medLineFull(m) {
+  const e = Number(m.every) || 1;
+  return medLine(m) + (e > 1 ? ' · ' + MED_EVERY[e].toLowerCase() : '');
 }
 
 /** Русское склонение: 1 день, 2 дня, 5 дней. */
@@ -220,7 +239,7 @@ function migrate(s) {
   }
   s.wishes = (s.wishes || []).map(w => ({ ...w, photo: w.photo || '' }));
   s.intentions = (s.intentions || []).map(i => ({ id: i.id, text: i.text }));
-  s.meds = Array.isArray(s.meds) ? s.meds : [];
+  s.meds = (Array.isArray(s.meds) ? s.meds : []).map(m => ({ ...m, every: Number(m.every) || 1, start: m.start || dayKeyOf(new Date()) }));
   if (!TITLES[s.tab]) s.tab = 'check';   // вкладки «Установки» больше нет
   s.v = 2;
   return s;
@@ -408,8 +427,14 @@ function viewStop() {
 /* ---------- экран: лекарства ---------- */
 function viewMeds() {
   if (!S.meds.length) return emptyHint('Лекарств пока нет.');
-  const taken = S.meds.filter(m => m.done).length, total = S.meds.length;
-  const next = PHASES.flatMap(p => S.meds.filter(m => m.phase === p.key)).find(m => !m.done);
+  const today = S.meds.filter(medToday);
+  if (!today.length) {
+    const soon = S.meds.map(m => ({ m, d: medNextIn(m) })).sort((a, b) => a.d - b.d)[0];
+    return '<div class="dash">На сегодня приёмов нет.' + (soon ? '<br><span style="color:var(--muted)">Ближайший — ' + esc(soon.m.name) +
+      ', через ' + soon.d + ' ' + plural(soon.d, 'день', 'дня', 'дней') + '.</span>' : '') + '</div>';
+  }
+  const taken = today.filter(m => m.done).length, total = today.length;
+  const next = PHASES.flatMap(p => today.filter(m => m.phase === p.key)).find(m => !m.done);
   let h = '<div class="card ring-card">' +
     '<div class="ring">' + ringSvg(total ? taken / total : 0, 78, 31, 8) + '<div class="pct">' + taken + '/' + total + '</div></div>' +
     '<div class="grow" style="display:flex;flex-direction:column;gap:6px">' +
@@ -417,7 +442,7 @@ function viewMeds() {
       '<span class="hint">' + (next ? 'Дальше: ' + esc(next.name) + ', ' + medLine(next) : 'Всё принято. На сегодня закрыто.') + '</span>' +
     '</div></div>';
   for (const p of PHASES) {
-    const list = S.meds.filter(m => m.phase === p.key);
+    const list = today.filter(m => m.phase === p.key);
     if (!list.length) continue;
     const d = list.filter(m => m.done).length;
     h += '<section class="card flush">' +
@@ -550,7 +575,7 @@ const F = {
   stop: '',
   set: '',
   wish: { text:'', due:'', photo:'' },
-  med: { name:'', form:'tab', qty:'1', phase:'morning', meal:'after' },
+  med: { name:'', form:'tab', qty:'1', phase:'morning', meal:'after', every:'1' },
 };
 
 function daysFromMode() {
@@ -636,6 +661,8 @@ function sheetMeds() {
     '<div class="f2">' +
       '<div class="f"><label>Когда</label>' + sel('phase', phases, F.med.phase) + '</div>' +
       '<div class="f"><label>Приём</label>' + sel('meal', meals, F.med.meal) + '</div></div>' +
+    '<div class="f"><label>Частота</label>' + sel('every', MED_EVERY, String(F.med.every)) + '</div>' +
+    (String(F.med.every) !== '1' ? '<span class="note">Отсчёт с сегодняшнего дня: первый приём — сегодня.</span>' : '') +
     '<button class="btn-add" data-act="add-med">Добавить лекарство</button></div>';
   for (const p of PHASES) {
     const list = S.meds.filter(m => m.phase === p.key);
@@ -643,7 +670,7 @@ function sheetMeds() {
     h += '<div class="blk">' + p.name + '</div>' + list.map(m =>
       '<div class="mini"><span class="grow">' +
         '<div class="m-t">' + esc(m.name) + '</div>' +
-        '<div class="m-s">' + esc(medLine(m)) + '</div></span>' +
+        '<div class="m-s">' + esc(medLineFull(m)) + (medToday(m) ? '' : ' · следующий через ' + medNextIn(m) + ' ' + plural(medNextIn(m), 'день', 'дня', 'дней')) + '</div></span>' +
         trashBtn('del-med', 'data-id="' + m.id + '"', 'Удалить лекарство') + '</div>').join('');
   }
   if (!S.meds.length) h += '<div class="empty">Пока пусто.</div>';
@@ -959,8 +986,9 @@ const ACTIONS = {
     const name = F.med.name.trim();
     if (!name) { toast('Введите название'); return; }
     const qty = Math.min(99, Math.max(1, Math.round(Number(F.med.qty) || 1)));
-    S.meds.push({ id: uid('r'), name, form: F.med.form, qty, phase: F.med.phase, meal: F.med.meal, done:false });
-    F.med = { name:'', form:'tab', qty:'1', phase: F.med.phase, meal: F.med.meal };
+    S.meds.push({ id: uid('r'), name, form: F.med.form, qty, phase: F.med.phase, meal: F.med.meal,
+      every: Number(F.med.every) || 1, start: dayKeyOf(new Date()), done:false });
+    F.med = { name:'', form:'tab', qty:'1', phase: F.med.phase, meal: F.med.meal, every:'1' };
     commitSheet();
     toast('Лекарство добавлено');
   },
@@ -1056,7 +1084,7 @@ document.addEventListener('change', e => {
   if (!f) return;
   setField(f, e.target.value);
   /* от времени зависит блок дня, от периодичности — набор дней: подсказку надо обновить */
-  if (f === 'item.mode' || f === 'item.time') renderSheet();
+  if (f === 'item.mode' || f === 'item.time' || f === 'med.every') renderSheet();
 });
 
 /* Enter в коротких полях */
