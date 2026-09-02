@@ -697,6 +697,7 @@ const ACTIONS = {
     if (i) { i.done = !i.done; commit(); }
   },
   moment(el) {
+    if (holdFired) { holdFired = false; return; }   // клик после удержания — не считаем
     const m = S.moments.find(x => x.id === el.dataset.id);
     if (m) { m.count += 1; commit(); }
   },
@@ -795,6 +796,30 @@ const ACTIONS = {
   },
   'del-wish'(el) { S.wishes = S.wishes.filter(x => x.id !== el.dataset.id); commitSheet(); },
 };
+
+/* удержание чипа «в моменте» (~0,6 с) сбрасывает его счётчик */
+const HOLD_MS = 600, HOLD_MOVE = 10;
+let holdTimer = null, holdFired = false, holdX = 0, holdY = 0;
+function cancelHold() { clearTimeout(holdTimer); holdTimer = null; }
+document.addEventListener('pointerdown', e => {
+  const chip = e.target.closest('.chip[data-act="moment"]');
+  if (!chip) return;
+  holdFired = false; holdX = e.clientX; holdY = e.clientY;
+  cancelHold();
+  holdTimer = setTimeout(() => {
+    holdTimer = null; holdFired = true;
+    const m = S.moments.find(x => x.id === chip.dataset.id);
+    if (!m) return;
+    if (m.count) { m.count = 0; commit(); toast('Сброшено'); }
+    else toast('Счётчик и так пуст');
+  }, HOLD_MS);
+});
+document.addEventListener('pointermove', e => {
+  if (holdTimer && Math.hypot(e.clientX - holdX, e.clientY - holdY) > HOLD_MOVE) cancelHold();  // начали листать
+});
+document.addEventListener('pointerup', cancelHold);
+document.addEventListener('pointercancel', cancelHold);
+document.addEventListener('contextmenu', e => { if (e.target.closest('.chip')) e.preventDefault(); });
 
 /* делегирование: один слушатель на всё приложение */
 document.addEventListener('click', e => {
