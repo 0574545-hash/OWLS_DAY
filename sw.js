@@ -1,5 +1,5 @@
 /* Офлайн-кэш. Меняйте VERSION при выкладке новой версии. */
-const VERSION = 'owls-day-v3';
+const VERSION = 'owls-day-v4';
 const ASSETS = [
   './', './index.html', './app.js', './manifest.webmanifest',
   './assets/owl-mark.png?v=2', './assets/icon-192.png', './assets/icon-512.png',

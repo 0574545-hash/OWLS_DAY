@@ -20,15 +20,29 @@ const PHASES = [
 const TITLES = {
   check: { eyebrow:'Чек-лист',    title:'День по частям' },
   stop:  { eyebrow:'Стоп-лист',   title:'Не сегодня'     },
+  meds:  { eyebrow:'Лекарства',   title:'Приём'          },
   wish:  { eyebrow:'Wish list',   title:'Желания'        },
   diary: { eyebrow:'Дневник дня', title:'Итог дня'       },
 };
 const TABS = [
   { key:'check', icon:'check', label:'Чек-лист'  },
   { key:'stop',  icon:'stop',  label:'Стоп-лист' },
+  { key:'meds',  icon:'pill',  label:'Лекарства' },
   { key:'wish',  icon:'wish',  label:'Wish list' },
   { key:'diary', icon:'diary', label:'Дневник'   },
 ];
+
+const MED_FORMS = {
+  tab:     { label:'Таблетка', one:'таблетка', few:'таблетки', many:'таблеток' },
+  drops:   { label:'Капли',    one:'капля',    few:'капли',    many:'капель'   },
+  portion: { label:'Порция',   one:'порция',   few:'порции',   many:'порций'   },
+};
+const MED_MEAL = { before:'до еды', with:'во время еды', after:'после еды' };
+/** «2 таблетки · после еды» */
+function medLine(m) {
+  const f = MED_FORMS[m.form] || MED_FORMS.tab;
+  return m.qty + ' ' + plural(m.qty, f.one, f.few, f.many) + ' · ' + (MED_MEAL[m.meal] || MED_MEAL.after);
+}
 
 /** Русское склонение: 1 день, 2 дня, 5 дней. */
 function plural(n, one, few, many) {
@@ -89,6 +103,7 @@ const ICON = {
   tick:'<path d="M4 12.5 9.5 18 20 6.5"/>',
   cal:'<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8.5 3v4M15.5 3v4"/>',
   trash:'<path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/>',
+  pill:'<rect x="3" y="8.5" width="18" height="7" rx="3.5" transform="rotate(-45 12 12)"/><path d="m9.2 9.2 5.6 5.6"/>',
   photo:'<rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="10.5" r="1.8"/><path d="m4.5 17 4.8-4.2 3.4 3 2.6-2.2 4.2 3.4"/>',
 };
 function svg(name, o = {}) {
@@ -152,6 +167,7 @@ function seed() {
       { id:'s2', text:'Сериалы в рабочее время', clean:0, slipped:false },
       { id:'s3', text:'Сладкое после 19:00',     clean:0, slipped:false },
     ],
+    meds: [],
     mood: 2,
     fields: { good:'', hard:'', thanks:'' },
     entries: [],
@@ -186,6 +202,7 @@ function migrate(s) {
   }
   s.wishes = (s.wishes || []).map(w => ({ ...w, photo: w.photo || '' }));
   s.intentions = (s.intentions || []).map(i => ({ id: i.id, text: i.text }));
+  s.meds = Array.isArray(s.meds) ? s.meds : [];
   if (!TITLES[s.tab]) s.tab = 'check';   // вкладки «Установки» больше нет
   s.v = 2;
   return s;
@@ -213,6 +230,7 @@ function rollover() {
 
   for (const p of PHASES) S.items[p.key].forEach(i => { i.done = false; });
   S.moments.forEach(m => { m.count = 0; });
+  S.meds.forEach(m => { m.done = false; });
   S.stops.forEach(x => { if (!x.slipped) x.clean += 1; else { x.clean = 0; x.slipped = false; } });
   S.fields = { good:'', hard:'', thanks:'' };
   S.dayKey = today;
@@ -370,6 +388,39 @@ function viewStop() {
     '</section>';
 }
 
+/* ---------- экран: лекарства ---------- */
+function viewMeds() {
+  if (!S.meds.length) return emptyHint('Лекарств пока нет.');
+  const taken = S.meds.filter(m => m.done).length, total = S.meds.length;
+  const next = PHASES.flatMap(p => S.meds.filter(m => m.phase === p.key)).find(m => !m.done);
+  let h = '<div class="card ring-card">' +
+    '<div class="ring">' + ringSvg(total ? taken / total : 0, 78, 31, 8) + '<div class="pct">' + taken + '/' + total + '</div></div>' +
+    '<div class="grow" style="display:flex;flex-direction:column;gap:6px">' +
+      '<span class="done-line">' + taken + ' из ' + total + ' ' + plural(total, 'приёма', 'приёмов', 'приёмов') + '</span>' +
+      '<span class="hint">' + (next ? 'Дальше: ' + esc(next.name) + ', ' + medLine(next) : 'Всё принято. На сегодня закрыто.') + '</span>' +
+    '</div></div>';
+  for (const p of PHASES) {
+    const list = S.meds.filter(m => m.phase === p.key);
+    if (!list.length) continue;
+    const d = list.filter(m => m.done).length;
+    h += '<section class="card flush">' +
+      '<div class="grp-h"><div class="row">' +
+        svg(p.key, { size:17, color: p.key === 'morning' ? 'var(--accent)' : 'var(--ink)', width:1.5 }) +
+        '<span class="sec-t grow">' + p.name + '</span>' +
+        '<span style="font-size:11.5px;color:var(--muted)">' + d + ' / ' + list.length + '</span>' +
+      '</div><div class="bar"><i style="width:' + Math.round(d / list.length * 100) + '%"></i></div></div>' +
+      list.map(m =>
+        '<button class="item' + (m.done ? ' is-done' : '') + '" data-act="med" data-id="' + m.id + '" style="min-height:58px">' +
+          '<span class="box' + (m.done ? ' on' : '') + '">' + (m.done ? svg('tick', { size:13, color:'#fff', width:3 }) : '') + '</span>' +
+          '<span class="grow" style="display:flex;flex-direction:column;gap:3px;text-align:left">' +
+            '<span class="txt">' + esc(m.name) + '</span>' +
+            '<span style="font-size:11.5px;color:var(--faint)">' + esc(medLine(m)) + '</span></span>' +
+        '</button>').join('') +
+      '</section>';
+  }
+  return h;
+}
+
 /* ---------- экран: желания ---------- */
 function viewWish() {
   if (!S.wishes.length) return emptyHint('Список желаний пуст.');
@@ -449,7 +500,7 @@ function viewDiary() {
         : '<div class="empty">Записей пока нет.</div>') + '</section>';
 }
 
-const VIEWS = { check:viewCheck, stop:viewStop, wish:viewWish, diary:viewDiary };
+const VIEWS = { check:viewCheck, stop:viewStop, meds:viewMeds, wish:viewWish, diary:viewDiary };
 
 function render(keepScroll) {
   const y = keepScroll ? $screen.scrollTop : 0;
@@ -467,6 +518,7 @@ function render(keepScroll) {
 const SHEET_TABS = [
   { key:'check', label:'Чек-лист'  },
   { key:'stop',  label:'Стоп-лист' },
+  { key:'meds',  label:'Лекарства' },
   { key:'set',   label:'Установки' },
   { key:'wish',  label:'Желания'   },
 ];
@@ -481,6 +533,7 @@ const F = {
   stop: '',
   set: '',
   wish: { text:'', due:'', photo:'' },
+  med: { name:'', form:'tab', qty:'1', phase:'morning', meal:'after' },
 };
 
 function daysFromMode() {
@@ -549,6 +602,37 @@ function sheetStop() {
       : '<div class="empty">Пока пусто.</div>');
 }
 
+function sheetMeds() {
+  const sel = (name, opts, cur) => '<select data-f="med.' + name + '">' +
+    Object.entries(opts).map(([v, l]) => '<option value="' + v + '"' + (cur === v ? ' selected' : '') + '>' + l + '</option>').join('') + '</select>';
+  const forms = Object.fromEntries(Object.entries(MED_FORMS).map(([k, v]) => [k, v.label]));
+  const phases = Object.fromEntries(PHASES.map(p => [p.key, p.name]));
+  const meals = { before:'До еды', with:'Во время еды', after:'После еды' };
+  let h = '<div class="form">' +
+    '<span class="sec-t">Новое лекарство</span>' +
+    '<div class="f"><label for="m-name">Название</label>' +
+      '<input id="m-name" type="text" data-f="med.name" value="' + esc(F.med.name) + '" placeholder="Например, магний"></div>' +
+    '<div class="f2">' +
+      '<div class="f"><label>Форма</label>' + sel('form', forms, F.med.form) + '</div>' +
+      '<div class="f"><label for="m-qty">Количество</label>' +
+        '<input id="m-qty" type="number" inputmode="numeric" min="1" max="99" step="1" data-f="med.qty" value="' + esc(F.med.qty) + '"></div></div>' +
+    '<div class="f2">' +
+      '<div class="f"><label>Когда</label>' + sel('phase', phases, F.med.phase) + '</div>' +
+      '<div class="f"><label>Приём</label>' + sel('meal', meals, F.med.meal) + '</div></div>' +
+    '<button class="btn-add" data-act="add-med">Добавить лекарство</button></div>';
+  for (const p of PHASES) {
+    const list = S.meds.filter(m => m.phase === p.key);
+    if (!list.length) continue;
+    h += '<div class="blk">' + p.name + '</div>' + list.map(m =>
+      '<div class="mini"><span class="grow">' +
+        '<div class="m-t">' + esc(m.name) + '</div>' +
+        '<div class="m-s">' + esc(medLine(m)) + '</div></span>' +
+        trashBtn('del-med', 'data-id="' + m.id + '"', 'Удалить лекарство') + '</div>').join('');
+  }
+  if (!S.meds.length) h += '<div class="empty">Пока пусто.</div>';
+  return h;
+}
+
 function sheetSet() {
   return '<div class="form">' +
       '<span class="sec-t">Новая установка</span>' +
@@ -589,7 +673,7 @@ function sheetWish() {
     }).join('') : '<div class="empty">Пока пусто.</div>');
 }
 
-const SHEET_VIEWS = { check:sheetCheck, stop:sheetStop, set:sheetSet, wish:sheetWish };
+const SHEET_VIEWS = { check:sheetCheck, stop:sheetStop, meds:sheetMeds, set:sheetSet, wish:sheetWish };
 
 function renderSheet() {
   $seg.innerHTML = SHEET_TABS.map(t =>
@@ -840,6 +924,26 @@ const ACTIONS = {
   },
   'del-moment'(el) { S.moments = S.moments.filter(x => x.id !== el.dataset.id); commitSheet(); },
 
+  /* лекарства */
+  med(el) {
+    const m = S.meds.find(x => x.id === el.dataset.id);
+    if (!m) return;
+    m.done = !m.done;
+    if (m.done) splashAt(el.querySelector('.box'));
+    commit();
+    if (m.done) animateOnce(document.querySelector('[data-act="med"][data-id="' + m.id + '"] .box'), 'pop');
+  },
+  'add-med'() {
+    const name = F.med.name.trim();
+    if (!name) { toast('Введите название'); return; }
+    const qty = Math.min(99, Math.max(1, Math.round(Number(F.med.qty) || 1)));
+    S.meds.push({ id: uid('r'), name, form: F.med.form, qty, phase: F.med.phase, meal: F.med.meal, done:false });
+    F.med = { name:'', form:'tab', qty:'1', phase: F.med.phase, meal: F.med.meal };
+    commitSheet();
+    toast('Лекарство добавлено');
+  },
+  'del-med'(el) { S.meds = S.meds.filter(x => x.id !== el.dataset.id); commitSheet(); },
+
   /* настройки: стоп-лист */
   'add-stop'() {
     const text = F.stop.trim();
@@ -944,6 +1048,7 @@ document.addEventListener('keydown', e => {
   else if (f === 'set') ACTIONS['add-intent']();
   else if (f.startsWith('item.')) ACTIONS['add-item']();
   else if (f.startsWith('wish.')) ACTIONS['add-wish']();
+  else if (f.startsWith('med.')) ACTIONS['add-med']();
 });
 
 /* вернулись в приложение — проверяем, не наступил ли новый день */
