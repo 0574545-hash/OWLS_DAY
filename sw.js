@@ -1,8 +1,9 @@
 /* Офлайн-кэш. Меняйте VERSION при выкладке новой версии. */
-const VERSION = 'owls-day-v17';
+const VERSION = 'owls-day-v18';
 const ASSETS = [
-  './', './index.html', './app.js?v=17', './manifest.webmanifest',
-  './assets/owl-mark.png?v=2', './assets/icon-192.png', './assets/icon-512.png',
+  './', './index.html', './app.js?v=18', './manifest.webmanifest',
+  './assets/owl-mark.png?v=2',
+  './assets/apple-touch-icon.png?v=18', './assets/owls-day-192.png?v=18', './assets/owls-day-512.png?v=18',
 ];
 
 self.addEventListener('install', e => {
