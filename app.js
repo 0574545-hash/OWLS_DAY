@@ -219,6 +219,9 @@ function seed() {
     fields: { good:'', hard:'', thanks:'' },
     entries: [],
     history: [],
+    backupAt: '',          // день последней копии
+    edits: 0,              // правок с последней копии
+    backupSnooze: '',      // день, на который отложили напоминание
   };
 }
 
@@ -250,6 +253,7 @@ function migrate(s) {
   s.wishes = (s.wishes || []).map(w => ({ ...w, photo: w.photo || '' }));
   s.intentions = (s.intentions || []).map(i => ({ id: i.id, text: i.text }));
   s.meds = (Array.isArray(s.meds) ? s.meds : []).map(m => ({ ...m, every: Number(m.every) || 1, start: m.start || dayKeyOf(new Date()) }));
+  s.backupAt = s.backupAt || ''; s.edits = Number(s.edits) || 0; s.backupSnooze = s.backupSnooze || '';
   if (!TITLES[s.tab]) s.tab = 'check';   // вкладки «Установки» больше нет
   s.v = 2;
   return s;
@@ -407,7 +411,7 @@ function viewCheck() {
   const next = all.find(i => !i.done);
   const st = streak();
 
-  let h = ringCard('check', done, total,
+  let h = backupBanner() + ringCard('check', done, total,
     done + ' из ' + total + ' ' + plural(total, 'пункта', 'пунктов', 'пунктов'),
     total === 0 ? 'На сегодня пунктов нет.'
       : next ? 'Дальше: ' + esc(next.text.toLowerCase()) : 'День закрыт полностью. Можно выдохнуть.');
@@ -1169,8 +1173,8 @@ function toast(msg) {
   toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
 }
 
-function commit(keepScroll = true) { save(); render(keepScroll); }
-function commitSheet() { save(); renderSheet(); }
+function commit(keepScroll = true) { S.edits = (S.edits || 0) + 1; save(); render(keepScroll); }
+function commitSheet() { S.edits = (S.edits || 0) + 1; save(); renderSheet(); }
 
 const ACTIONS = {
   /* навигация */
@@ -1515,6 +1519,20 @@ const ACTIONS = {
     catch (e) { toast('Не удалось собрать файл: ' + (e && e.message || e)); }
   },
   'xl-import'() { $xlsx.click(); },
+
+  /* копия данных */
+  async 'bk-save'() {
+    const name = 'Трекер дня ' + dayKeyOf(new Date()) + '.json';
+    let ok = false;
+    try { ok = await deliverFile(backupBlob(), name); }
+    catch (e) { toast('Не удалось собрать копию: ' + (e && e.message || e)); return; }
+    if (!ok) return;                                   // окно закрыли — копии не было
+    S.backupAt = dayKeyOf(new Date()); S.edits = 0; S.backupSnooze = '';
+    save(); render(true); if (sheetOpen) renderSheet();
+    toast('Копия сохранена');
+  },
+  'bk-later'() { S.backupSnooze = dayKeyOf(new Date()); save(); render(true); },
+  'bk-restore'() { $json.click(); },
 };
 
 /* удержание чипа «в моменте» (~0,6 с) сбрасывает его счётчик */
@@ -1875,13 +1893,15 @@ function xlExport() {
   return xlsxBuild(sheets);
 }
 /** На iPhone файл уходит через «Поделиться» (иначе PWA его не сохранит), на остальных — обычная загрузка. */
-function deliverFile(blob, name) {
+/** Отдаёт файл: на iPhone — через «Поделиться» (там есть «Сохранить в Файлы»), иначе скачиванием.
+    Возвращает true, если файл ушёл, false — если окно закрыли. */
+async function deliverFile(blob, name) {
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   if (ios && navigator.canShare) {
     const file = new File([blob], name, { type: blob.type });
     if (navigator.canShare({ files:[file] })) {
-      navigator.share({ files:[file], title: name }).catch(() => {});
-      return;
+      try { await navigator.share({ files:[file], title: name }); return true; }
+      catch (e) { return false; }
     }
   }
   const url = URL.createObjectURL(blob);
@@ -1889,6 +1909,63 @@ function deliverFile(blob, name) {
   a.href = url; a.download = name;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 30000);
+  return true;
+}
+
+/* ============================ копия данных ============================ */
+/* Полный слепок состояния в JSON, вместе с фото. Файл кладётся в «Файлы» → iCloud Drive
+   руками пользователя: сайт на iPhone сам писать в файлы не может. */
+
+const BK_EVERY_DAYS = 7, BK_FIRST_EDITS = 15;
+
+function backupDaysAgo() {
+  if (!S.backupAt) return null;
+  return Math.round((parseKey(dayKeyOf(new Date())) - parseKey(S.backupAt)) / 86400000);
+}
+/** Пора ли напомнить о копии. */
+function backupDue() {
+  const today = dayKeyOf(new Date());
+  if (S.backupSnooze === today) return false;
+  const ago = backupDaysAgo();
+  if (ago === null) return (S.edits || 0) >= BK_FIRST_EDITS;
+  return ago >= BK_EVERY_DAYS && (S.edits || 0) > 0;
+}
+function backupBanner() {
+  if (!backupDue()) return '';
+  const ago = backupDaysAgo();
+  const title = ago === null ? 'Копии данных ещё не было' : 'Копии не было ' + ago + ' ' + plural(ago, 'день', 'дня', 'дней');
+  return '<div class="card pad bk"><div class="row" style="gap:12px;align-items:flex-start">' +
+    '<span class="bk-ic">' + svg('cal', { size:18, color:'var(--accent)', width:1.6 }) + '</span>' +
+    '<div class="grow"><div class="sec-t">' + title + '</div>' +
+    '<div class="hint">Файл в iCloud Drive вернёт всё на новом телефоне.</div></div></div>' +
+    '<div class="btn-row"><button class="btn-add" data-act="bk-save">Сохранить копию</button>' +
+    '<button class="btn-ghost wide" data-act="bk-later">Позже</button></div></div>';
+}
+function backupBlob() {
+  const payload = { app:'owls-day', version: S.v || 2, savedAt: new Date().toISOString(), dayKey: S.dayKey, data: S };
+  return new Blob([JSON.stringify(payload)], { type:'application/json' });
+}
+/** Проверяем, что это наша копия, и возвращаем краткую сводку для подтверждения. */
+function backupInspect(obj) {
+  if (!obj || obj.app !== 'owls-day' || !obj.data || !obj.data.items) throw new Error('Это не файл копии «Трекера дня»');
+  const d = obj.data;
+  const n = (a) => Array.isArray(a) ? a.length : 0;
+  const items = PHASES.reduce((k, p) => k + n(d.items[p.key]), 0);
+  return {
+    when: obj.dayKey ? fmtDate(obj.dayKey) : 'дата неизвестна',
+    line: items + ' ' + plural(items, 'пункт', 'пункта', 'пунктов') + ', ' +
+          n(d.stops) + ' ' + plural(n(d.stops), 'запрет', 'запрета', 'запретов') + ', ' +
+          n(d.meds) + ' ' + plural(n(d.meds), 'лекарство', 'лекарства', 'лекарств') + ', ' +
+          n(d.wishes) + ' ' + plural(n(d.wishes), 'желание', 'желания', 'желаний') + ', ' +
+          n(d.entries) + ' ' + plural(n(d.entries), 'запись', 'записи', 'записей') + ' дневника',
+  };
+}
+function backupRestore(obj) {
+  S = migrate(Object.assign(seed(), obj.data));
+  S.backupAt = obj.dayKey || dayKeyOf(new Date());
+  S.edits = 0; S.backupSnooze = '';
+  rollover();
+  save();
 }
 
 /* ---------- импорт ---------- */
@@ -1989,6 +2066,26 @@ function xlImport(book) {
 }
 
 const $xlsx = document.getElementById('xlsx-input');
+const $json = document.getElementById('json-input');
+$json.addEventListener('change', async () => {
+  const file = $json.files && $json.files[0];
+  $json.value = '';
+  if (!file) return;
+  try {
+    let obj;
+    try { obj = JSON.parse(await file.text()); }
+    catch (e) { throw new Error('Файл повреждён или это не копия «Трекера дня»'); }
+    const info = backupInspect(obj);
+    if (!confirm('Восстановить из копии от ' + info.when + '?\n' + info.line + '.\nТекущие данные на телефоне будут заменены.')) return;
+    backupRestore(obj);
+    render(false); renderSheet();
+    toast('Восстановлено из копии от ' + info.when);
+  } catch (e) {
+    console.warn(e);
+    toast(e && e.message || 'Не удалось прочитать файл');
+  }
+});
+
 $xlsx.addEventListener('change', async () => {
   const file = $xlsx.files && $xlsx.files[0];
   $xlsx.value = '';
@@ -2009,7 +2106,20 @@ $xlsx.addEventListener('change', async () => {
 });
 
 function sheetData() {
+  const ago = backupDaysAgo();
+  const status = ago === null ? 'Копии ещё не было'
+    : ago === 0 ? 'Копия сделана сегодня'
+    : 'Последняя копия — ' + fmtDate(S.backupAt) + ', ' + ago + ' ' + plural(ago, 'день', 'дня', 'дней') + ' назад';
+  const edits = S.edits || 0;
   return '<div class="form">' +
+      '<span class="sec-t">Копия данных</span>' +
+      '<span class="note"><b>' + status + '</b>' + (edits ? ' · с тех пор ' + edits + ' ' + plural(edits, 'правка', 'правки', 'правок') : '') + '</span>' +
+      '<span class="note">Один файл со всем: списки, отметки, история, фото. В окне «Поделиться» выберите «Сохранить в Файлы» и папку в iCloud Drive — тогда копия будет и на новом телефоне.</span>' +
+      '<button class="btn-add" data-act="bk-save">Сохранить копию</button>' +
+      '<button class="btn-ghost" data-act="bk-restore" style="justify-content:center">Восстановить из копии</button>' +
+      '<span class="note">Восстановление заменяет все данные на телефоне данными из файла. Напоминание о копии появляется раз в неделю.</span>' +
+    '</div>' +
+    '<div class="form">' +
       '<span class="sec-t">Excel</span>' +
       '<span class="note">Один файл .xlsx со всеми списками и историей. Скачайте его как шаблон, отредактируйте в Excel или Numbers и загрузите обратно.</span>' +
       '<button class="btn-add" data-act="xl-export">Скачать Excel</button>' +
