@@ -1058,18 +1058,22 @@ $photo.addEventListener('change', async () => {
 
 function splash() {
   const el = document.getElementById('splash');
-  if (!S.intentions.length) { el.remove(); return; }
-  const pick = S.intentions[Math.floor(Math.random() * S.intentions.length)];
-  document.getElementById('splash-text').textContent = pick.text;
+  if (!el) return;
+  /* до трёх случайных установок без повторов; меньше трёх — сколько есть */
+  const pool = S.intentions.slice(), pick = [];
+  while (pick.length < 3 && pool.length) pick.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+  if (!pick.length) { el.remove(); return; }
+  document.getElementById('splash-lines').innerHTML = pick.map(i => '<span class="s-ln">' + esc(i.text) + '</span>').join('');
+  el.style.setProperty('--n', pick.length);
   el.hidden = false;
-  const hide = () => {
-    el.classList.add('hide');
-    setTimeout(() => el.remove(), 600);
-  };
-  const t = setTimeout(hide, 2200);
+  el.classList.add('play');
+  /* 0,2 с подпись · по 1 с на установку · 0,25 с пауза · сова и название ≈ 0,7 с · всего 4 с при трёх */
+  const total = reducedMotion ? 1500 : 200 + pick.length * 1000 + 800;
+  const hide = () => { el.classList.add('hide'); setTimeout(() => el.remove(), 450); };
+  const t = setTimeout(hide, total);
   el.addEventListener('click', () => { clearTimeout(t); hide(); }, { once: true });
   /* если таймеры не сработали (фон, сон телефона) — убираем при первом же возврате */
-  setTimeout(() => { if (el.isConnected) el.remove(); }, 4000);
+  setTimeout(() => { if (el.isConnected) el.remove(); }, total + 2500);
   document.addEventListener('visibilitychange', () => { if (el.isConnected) el.remove(); }, { once: true });
 }
 

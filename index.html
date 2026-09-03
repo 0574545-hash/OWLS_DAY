@@ -234,17 +234,37 @@ nav span{transition:color .2s ease}
 .toast.show{opacity:1}
 
 /* ---------- заставка ---------- */
+/* Подпись держится, установки сменяются по одной; с последней уходит подпись,
+   и ровно на том же месте — сова с названием. --n задаёт JS: сколько установок. */
 #splash{
   position:fixed;inset:0;z-index:100;background:var(--ink);
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:26px;padding:40px 32px;text-align:center;
-  transition:opacity .5s ease;
+  transition:opacity .4s ease;
+  --n:3; --step:1s;
 }
 #splash.hide{opacity:0;pointer-events:none}
-#splash img{width:72px;height:72px;object-fit:contain;opacity:.95}
-#splash .s-eyebrow{font-family:var(--display);font-weight:400;font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.5)}
-#splash .s-text{font-family:var(--display);font-weight:700;font-size:clamp(19px,6.2vw,24px);line-height:1.35;letter-spacing:-.01em;color:#fff;max-width:20ch;text-wrap:pretty}
-#splash .s-rule{width:34px;height:2px;background:var(--accent)}
+.s-ph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:40px 28px;text-align:center}
+.s-ph2{opacity:0}
+.s-eyebrow{font-family:var(--display);font-weight:400;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,.5);opacity:0}
+.s-slot{display:grid;place-items:center;min-height:3.4em;font-size:clamp(19px,5.8vw,24px)}
+.s-ln{grid-area:1/1;font-family:var(--display);font-weight:700;font-size:inherit;line-height:1.34;letter-spacing:-.01em;color:#fff;max-width:18ch;text-wrap:pretty;opacity:0}
+.s-owl{width:116px;height:116px;border-radius:999px;background:var(--bg);display:grid;place-items:center;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+.s-owl img{width:80px;height:80px;display:block}
+.s-wm{font-family:var(--display);font-weight:800;font-size:clamp(22px,6.4vw,28px);letter-spacing:.06em;display:flex;gap:.34em}
+.s-wm b{color:#fff;font-weight:800}
+.s-wm em{color:var(--accent);font-style:normal;font-weight:800}
+#splash.play .s-eyebrow{animation:s-eb calc(.2s + var(--n) * var(--step)) ease both}
+#splash.play .s-ln:nth-child(1){animation:s-swap var(--step) ease both .2s}
+#splash.play .s-ln:nth-child(2){animation:s-swap var(--step) ease both calc(.2s + var(--step))}
+#splash.play .s-ln:nth-child(3){animation:s-swap var(--step) ease both calc(.2s + 2 * var(--step))}
+#splash.play .s-ph2{animation:s-show .01s linear forwards calc(.25s + var(--n) * var(--step))}
+#splash.play .s-owl{animation:s-owl .55s cubic-bezier(.2,.9,.3,1.35) both calc(.25s + var(--n) * var(--step))}
+#splash.play .s-wm{animation:s-wm .45s cubic-bezier(.2,.7,.2,1) both calc(.45s + var(--n) * var(--step))}
+@keyframes s-eb{0%{opacity:0;transform:translateY(6px)}8%,92%{opacity:1;transform:none}100%{opacity:0;transform:translateY(-8px)}}
+@keyframes s-swap{0%{opacity:0;transform:translateY(12px)}22%,76%{opacity:1;transform:none}100%{opacity:0;transform:translateY(-12px)}}
+@keyframes s-show{to{opacity:1}}
+@keyframes s-owl{0%{opacity:0;transform:scale(.7)}60%{opacity:1;transform:scale(1.06)}100%{opacity:1;transform:scale(1)}}
+@keyframes s-wm{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){#splash .s-ph1{display:none}#splash .s-ph2,#splash .s-owl,#splash .s-wm{opacity:1!important}}
 
 /* ---------- лист настроек ---------- */
 #sheet{
@@ -397,10 +417,8 @@ canvas#fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-in
   <main id="sheet-body"></main>
 </div>
 <div id="splash" hidden>
-  <img src="assets/owl-mark.png?v=2" alt="">
-  <span class="s-eyebrow">Установка дня</span>
-  <span class="s-text" id="splash-text"></span>
-  <div class="s-rule"></div>
+  <div class="s-ph s-ph1"><span class="s-eyebrow">Установки дня</span><div class="s-slot" id="splash-lines"></div></div>
+  <div class="s-ph s-ph2"><div class="s-owl"><img src="assets/owls-day-mark.svg?v=20" alt=""></div><span class="s-wm"><b>OWLS</b><em>DAY</em></span></div>
 </div>
 <input type="file" id="photo-input" accept="image/*" hidden>
 <input type="file" id="xlsx-input" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
@@ -413,6 +431,6 @@ canvas#fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-in
   <button class="save" data-act="hard-reset">Сбросить кэш и перезагрузить</button>
 </div>
 <div class="toast" id="toast"></div>
-<script src="app.js?v=19"></script>
+<script src="app.js?v=20"></script>
 </body>
 </html>
