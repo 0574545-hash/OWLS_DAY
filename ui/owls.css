@@ -1,0 +1,323 @@
+/* ============================================================
+   OWLS UI — дизайн-система «Трекера дня».
+   Подключать вместе со шрифтами:
+   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@400;700;800&display=swap">
+   <link rel="stylesheet" href="owls.css">
+   Система светлая по замыслу: тёмной темы нет, фон и цвета задаются явно.
+   ============================================================ */
+
+:root{
+  /* ---- поверхности и линии ---- */
+  --bg:#F6F4EF;            /* фон приложения */
+  --card:#FFFFFF;          /* карточка */
+  --line:#E1DCD0;          /* граница карточки, шапки, меню */
+  --line-soft:#EFECE3;     /* разделитель строк внутри карточки */
+  --line-input:#E9E5DC;    /* граница поля ввода и второстепенной кнопки */
+  --desk:#EDEAE1;          /* поле вокруг приложения на широком экране */
+
+  /* ---- текст ---- */
+  --ink:#0B1E35;           /* заголовки и основной текст */
+  --ink-2:#2A3A52;         /* подписи полей, второстепенные кнопки */
+  --muted:#6B7280;         /* пояснения */
+  --faint:#9AA1AB;         /* выполненное, плейсхолдеры, время */
+
+  /* ---- акцент ---- */
+  --accent:#F26336;        /* единственный акцент: действие и прогресс */
+  --accent-soft:#FEEFEA;   /* выбранное состояние */
+  --accent-dark:#D94B1F;   /* акцент под нажатием */
+
+  /* ---- смысловые цвета (не заменяют акцент) ---- */
+  --ok:#1E7A3C;   --ok-bg:#DCF5E4;
+  --bad:#B43232;  --bad-bg:#FBD9D9;
+
+  /* ---- шрифты ---- */
+  --display:'Unbounded',system-ui,sans-serif;   /* заголовки, числа, ярлыки */
+  --body:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;
+
+  /* ---- шкала отступов: шаг 2 px в мелком диапазоне, 4 px дальше ---- */
+  --s1:4px; --s2:6px; --s3:8px; --s4:10px; --s5:12px;
+  --s6:14px; --s7:16px; --s8:18px; --s9:20px; --s10:24px; --s11:28px;
+
+  /* ---- радиусы ---- */
+  --r:14px;        /* карточка */
+  --r-ctl:10px;    /* кнопка, поле ввода */
+  --r-sm:8px;      /* чип, мелкая кнопка */
+  --r-box:7px;     /* чекбокс */
+  --r-pill:999px;  /* пилюля, кружок */
+
+  /* ---- высоты элементов управления ---- */
+  --h-btn:48px;    /* главная кнопка */
+  --h-ctl:44px;    /* поле, второстепенная кнопка, чип */
+  --h-field:46px;  /* поле в форме настроек */
+  --h-row:52px;    /* строка списка */
+
+  /* ---- движение ---- */
+  --t-press:.12s;    /* сжатие под пальцем */
+  --t-base:.2s;      /* смена цвета, состояния */
+  --t-screen:.26s;   /* переход между экранами */
+  --t-sheet:.28s;    /* выезд листа настроек */
+  --t-ring:.55s;     /* заполнение кольца */
+  --e-out:cubic-bezier(.2,.7,.2,1);      /* въезд, появление */
+  --e-inout:cubic-bezier(.3,0,.2,1);     /* перемещение, выезд листа */
+  --e-spring:cubic-bezier(.2,.9,.3,1.4); /* пружинка отметки */
+
+  /* ---- безопасные зоны телефона ---- */
+  --sat:env(safe-area-inset-top); --sab:env(safe-area-inset-bottom);
+  --sal:env(safe-area-inset-left); --sar:env(safe-area-inset-right);
+}
+
+/* ============================ основа ============================ */
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;height:100%}
+body{
+  background:var(--bg); color:var(--ink); font-family:var(--body);
+  font-size:15px; line-height:1.45;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  overscroll-behavior-y:none;
+}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;text-align:left}
+input,textarea{font:inherit;color:var(--ink)}
+input::placeholder,textarea::placeholder{color:var(--faint)}
+input:focus-visible,textarea:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* ============================ каркас ============================ */
+/* Приложение занимает весь телефон, на планшете и компьютере — колонка по центру. */
+#app,.app{
+  position:fixed; inset:0;
+  display:flex; flex-direction:column;
+  width:100%; max-width:560px; margin:0 auto;
+  background:var(--bg);
+  box-shadow:0 0 0 1px rgba(11,30,53,.06);
+}
+@media (min-width:600px){
+  body{background:var(--desk)}
+  #app,.app{position:relative;height:100dvh;max-height:100dvh}
+}
+
+/* шапка: надзаголовок, заголовок, дата слева — знак справа */
+.hd{
+  flex:none; display:flex; align-items:flex-end; justify-content:space-between; gap:var(--s5);
+  padding:calc(var(--sat) + var(--s7)) calc(var(--sar) + var(--s9)) var(--s6) calc(var(--sal) + var(--s9));
+  background:var(--bg); border-bottom:1px solid var(--line);
+}
+.hd-t{display:flex;flex-direction:column;gap:var(--s1);min-width:0}
+.hd-date{font-size:12.5px;color:var(--muted)}
+.hd-mark{width:52px;height:52px;border-radius:var(--r-pill);background:#fff;border:1px solid var(--line);display:grid;place-items:center;flex:none}
+.hd-mark img{width:36px;height:36px;object-fit:contain}
+
+/* область прокрутки: карточки идут колонкой с зазором 14 px */
+main,.screen{
+  flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch;
+  padding:var(--s8) calc(var(--sar) + var(--s9)) var(--s11) calc(var(--sal) + var(--s9));
+  display:flex; flex-direction:column; gap:var(--s6);
+  scrollbar-width:none;
+}
+main::-webkit-scrollbar,.screen::-webkit-scrollbar{width:0;height:0}
+/* без этого карточки сжимаются, когда содержимое длиннее экрана */
+main > *,.screen > *{flex:0 0 auto}
+
+/* ============================ типографика ============================ */
+/* Роли, а не размеры: eyebrow → h1 → sec-t → body → hint → micro. */
+.eyebrow{font-family:var(--display);font-weight:400;font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+.h1{font-family:var(--display);font-weight:800;font-size:clamp(21px,6.4vw,26px);line-height:1.05;letter-spacing:-.02em}
+.big{font-family:var(--display);font-weight:800;font-size:18px}
+.done-line{font-family:var(--display);font-weight:700;font-size:15px}
+.sec-t{font-family:var(--display);font-weight:700;font-size:13.5px;color:var(--ink)}
+.sec-s{font-size:11.5px;color:var(--muted)}
+.hint{font-size:12px;line-height:1.45;color:var(--muted)}
+.note{font-size:12px;color:var(--muted)}
+.note b{font-weight:700;color:var(--ink-2)}
+.time{font-size:11.5px;color:var(--faint);flex:none}
+.blk{font-family:var(--display);font-weight:400;font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);padding:var(--s7) var(--s7) var(--s3)}
+
+/* ============================ примитивы ============================ */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r)}
+.card.flush{overflow:hidden}          /* когда строки списка доходят до края карточки */
+.pad{padding:var(--s7) var(--s8)}
+.row{display:flex;align-items:center;gap:var(--s5)}
+.grow{flex:1;min-width:0}
+.empty{padding:var(--s7);font-size:12.5px;color:var(--faint)}
+.dash{background:var(--card);border:1px dashed #C9C2B1;border-radius:var(--r);padding:22px;text-align:center;font-size:13px;color:var(--faint)}
+.rule{width:34px;height:2px;background:var(--accent)}
+
+/* шапка секции внутри карточки */
+.sec-h{padding:var(--s6) var(--s7) var(--s5);border-bottom:1px solid var(--line-soft);display:flex;flex-direction:column;gap:3px}
+.grp-h{padding:var(--s6) var(--s7) var(--s5);display:flex;flex-direction:column;gap:var(--s4);border-bottom:1px solid var(--line-soft)}
+
+/* строка списка: отметка, текст, правый показатель */
+.item{display:flex;align-items:center;gap:var(--s5);padding:var(--s2) var(--s7);min-height:var(--h-row);border-bottom:1px solid var(--line-soft);width:100%;text-align:left;
+  transition:transform var(--t-press) ease,background-color .15s ease}
+.item:last-child{border-bottom:0}
+.item:active{transform:scale(.985);background:var(--line-soft)}
+.item .txt{flex:1;min-width:0;font-size:14px;line-height:1.35}
+.item.is-done .txt{color:var(--faint);text-decoration:line-through}
+
+/* строка списка в настройках */
+.mini{display:flex;align-items:center;gap:var(--s5);padding:var(--s4) var(--s7);min-height:56px;border-bottom:1px solid var(--line-soft)}
+.mini .m-t{font-size:14px;line-height:1.35;color:var(--ink)}
+.mini .m-s{font-size:11.5px;color:var(--faint);margin-top:3px}
+
+/* отметки */
+.box{width:24px;height:24px;border-radius:var(--r-box);background:#fff;border:1.5px solid #C9C2B1;flex:none;display:grid;place-items:center;
+  transition:background-color .15s,border-color .15s,transform var(--t-press) ease}
+.box.on{background:var(--accent);border-color:var(--accent)}
+.item:active .box{transform:scale(.9)}
+.circ{width:24px;height:24px;border-radius:var(--r-pill);background:#fff;border:1.5px solid #C9C2B1;flex:none;display:grid;place-items:center}
+.circ.on{background:var(--accent);border-color:var(--accent)}
+
+/* ярлыки состояния */
+.pill{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border-radius:var(--r-pill);padding:var(--s2) 11px;flex:none}
+.pill.ok{color:var(--ok);background:var(--ok-bg)}
+.pill.bad{color:var(--bad);background:var(--bad-bg)}
+.tag{font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-2);background:var(--bg);border:1px solid var(--line-input);border-radius:6px;padding:3px var(--s3)}
+
+/* чипы: касание считает, удержание сбрасывает */
+.chips{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3)}
+.chip{display:flex;align-items:center;gap:var(--s3);min-height:var(--h-ctl);padding:var(--s3) var(--s5);border:1px solid var(--line-input);border-radius:var(--r-sm);background:var(--bg);font-size:13px;font-weight:500;color:var(--ink-2);line-height:1.25;
+  user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:manipulation;transition:transform var(--t-press) ease}
+.chip > span:not(.badge){flex:1;min-width:0;text-align:left}
+.chip.on{border-color:var(--accent);background:var(--accent-soft);font-weight:600;color:var(--ink)}
+.chip .badge{font-family:var(--display);font-weight:700;font-size:11px;color:var(--accent)}
+.chip:active{transform:scale(.97)}
+
+/* полоса прогресса секции */
+.bar{height:4px;border-radius:var(--r-pill);background:var(--line-soft);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);border-radius:var(--r-pill);transition:width .35s ease}
+
+/* тёмная плашка: итог, серия, установка дня */
+.slab{background:var(--ink);border-radius:var(--r);padding:var(--s7) var(--s8);display:flex;align-items:center;justify-content:space-between;gap:var(--s6);color:#fff}
+.slab .eyebrow{color:rgba(255,255,255,.55)}
+.slab-n{font-family:var(--display);font-weight:800;font-size:17px;color:#fff}
+.slab-s{font-size:11.5px;color:rgba(255,255,255,.6)}
+
+/* ============================ кольцо прогресса ============================ */
+/* Одна шапка на каждый экран: кольцо, счёт, подсказка «что дальше». */
+.ring-card{display:flex;align-items:center;gap:var(--s8);padding:var(--s8);transition:transform var(--t-base) ease}
+.ring{position:relative;width:78px;height:78px;flex:none}
+.ring circle{transition:stroke-dashoffset var(--t-ring) cubic-bezier(.4,0,.2,1)}
+.ring .pct{position:absolute;inset:0;display:grid;place-items:center;padding:0 2px;
+  font-family:var(--display);font-weight:800;font-size:17px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.ring .pct.w3{font-size:13.5px;letter-spacing:-.04em}   /* «100%» крупным кеглем не помещается */
+
+/* ============================ кнопки ============================ */
+.btn-add{height:var(--h-btn);border-radius:var(--r-ctl);background:var(--accent);display:grid;place-items:center;font-size:14px;font-weight:700;color:#fff;width:100%;
+  transition:transform var(--t-press) ease,background-color .15s ease}
+.btn-add:active{background:var(--accent-dark);transform:scale(.96)}
+.save{height:var(--h-btn);border-radius:var(--r-ctl);background:var(--ink);display:grid;place-items:center;font-size:14px;font-weight:700;color:#fff;width:100%;
+  transition:transform var(--t-press) ease,opacity .15s ease}
+.save:active{opacity:.85;transform:scale(.96)}
+.btn-ghost{height:var(--h-ctl);padding:0 var(--s6);border-radius:var(--r-ctl);border:1px solid var(--line-input);background:#fff;font-size:13px;font-weight:600;color:var(--ink-2);
+  display:inline-flex;align-items:center;gap:var(--s3);transition:transform var(--t-press) ease,background-color .15s ease}
+.btn-ghost:active{background:var(--line-soft);transform:scale(.96)}
+.plus{width:var(--h-ctl);height:var(--h-ctl);border-radius:var(--r-ctl);background:var(--accent);display:grid;place-items:center;flex:none;transition:transform var(--t-press) ease,background-color .15s ease}
+.plus:active{background:var(--accent-dark);transform:scale(.96)}
+
+/* удаление — только по удержанию: полоса заполняется две секунды */
+.del{flex:none;width:32px;height:32px;display:grid;place-items:center;border-radius:var(--r-sm);opacity:.45;
+  user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:manipulation;position:relative;overflow:hidden}
+.del:active{opacity:1}
+.del.holding{opacity:1;animation:holdfill 2s linear forwards}
+.del.holding::after{content:'';position:absolute;left:0;bottom:0;height:3px;width:0;background:var(--bad);animation:holdbar 2s linear forwards}
+@keyframes holdfill{0%{background:transparent;transform:scale(1)}15%{transform:scale(1.12)}100%{background:var(--bad-bg);transform:scale(1.12)}}
+@keyframes holdbar{to{width:100%}}
+
+/* ============================ формы ============================ */
+.form{display:flex;flex-direction:column;gap:var(--s5);padding:var(--s7)}
+.f{display:flex;flex-direction:column;gap:var(--s2)}
+.f > label{font-size:11.5px;font-weight:700;letter-spacing:.02em;color:var(--ink-2)}
+.f input[type=text],.f input[type=time],.f input[type=date],.f input[type=number],.f select{
+  width:100%;height:var(--h-field);padding:0 var(--s5);font-size:16px;   /* 16px — иначе iPhone увеличивает страницу */
+  border:1px solid var(--line-input);border-radius:var(--r-ctl);background:var(--bg);
+  font-family:var(--body);appearance:none;-webkit-appearance:none;
+}
+.f select{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2' stroke-linecap='round'><path d='m6 9 6 6 6-6'/></svg>");background-repeat:no-repeat;background-position:right var(--s5) center;padding-right:44px;text-overflow:ellipsis}
+.f2{display:flex;gap:var(--s4)}
+.f2 > .f{flex:1;min-width:0}
+.fld{display:flex;flex-direction:column;gap:7px}
+.fld label{font-size:12px;font-weight:700;color:var(--ink-2)}
+.fld textarea{width:100%;resize:none;border:1px solid var(--line-input);border-radius:var(--r-ctl);background:var(--bg);padding:var(--s4) var(--s5);font-size:16px;line-height:1.5;min-height:64px}
+.add{display:flex;align-items:center;gap:var(--s4);padding:var(--s4) var(--s7) var(--s5)}
+.add input{flex:1;min-width:0;height:var(--h-ctl);padding:0 var(--s5);border:1px solid var(--line-input);border-radius:var(--r-ctl);background:var(--bg);font-size:16px}
+
+/* переключатель дней недели и подобные наборы */
+.days{display:flex;gap:var(--s2);flex-wrap:wrap}
+.days button{flex:1;min-width:38px;height:40px;border-radius:9px;border:1px solid var(--line-input);background:#fff;
+  font-size:12px;font-weight:600;color:var(--ink-2);text-align:center;display:grid;place-items:center;transition:transform var(--t-press) ease}
+.days button.on{background:var(--accent-soft);border-color:var(--accent);color:var(--ink)}
+.days button:active{transform:scale(.94)}
+
+/* ============================ нижнее меню ============================ */
+nav,.nav{
+  position:relative; flex:none; background:#fff; border-top:1px solid var(--line);
+  display:flex; align-items:stretch; gap:2px;
+  padding:var(--s2) calc(var(--sar) + var(--s3)) calc(var(--sab) + var(--s3)) calc(var(--sal) + var(--s3));
+}
+nav button,.nav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:var(--s3) 0 var(--s1);min-height:var(--h-row)}
+nav span,.nav span{font-size:9.5px;font-weight:600;color:var(--muted);line-height:1.1;text-align:center;transition:color var(--t-base) ease}
+nav button.on span,.nav button.on span{font-weight:700;color:var(--ink)}
+nav button svg,.nav button svg{transition:transform .14s ease,stroke var(--t-base) ease}
+nav button:active svg,.nav button:active svg{transform:scale(.86)}
+/* место под подчёркивание в каждой кнопке и само подчёркивание — одно на меню */
+.ul{width:16px;height:2px}
+.nav-ul{position:absolute;left:0;top:0;width:16px;height:2px;border-radius:2px;background:var(--accent);opacity:0;pointer-events:none}
+.nav-ul.ready{opacity:1;transition:transform .3s var(--e-inout)}
+
+/* горизонтальные вкладки внутри листа */
+.seg{flex:none;display:flex;gap:var(--s2);overflow-x:auto;scrollbar-width:none;
+  padding:var(--s5) calc(var(--sar) + var(--s7)) var(--s5) calc(var(--sal) + var(--s7));border-bottom:1px solid var(--line)}
+.seg::-webkit-scrollbar{width:0;height:0}
+.seg button{flex:none;min-height:38px;padding:0 var(--s6);border-radius:var(--r-pill);border:1px solid var(--line-input);background:#fff;
+  font-size:13px;font-weight:600;color:var(--ink-2);white-space:nowrap;transition:transform var(--t-press) ease,background-color .15s ease}
+.seg button.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.seg button:active{transform:scale(.96)}
+
+/* ============================ лист настроек ============================ */
+.sheet{position:fixed;inset:0;z-index:90;background:var(--bg);display:flex;flex-direction:column;
+  width:100%;max-width:560px;margin:0 auto;transform:translateY(100%);transition:transform var(--t-sheet) var(--e-inout)}
+.sheet.open{transform:translateY(0)}
+@media (min-width:600px){.sheet{position:absolute;height:100%}}
+.sh-hd{flex:none;display:flex;align-items:center;gap:var(--s5);
+  padding:calc(var(--sat) + var(--s7)) calc(var(--sar) + var(--s7)) var(--s5) calc(var(--sal) + var(--s7));
+  border-bottom:1px solid var(--line);background:var(--bg)}
+.sh-hd .h1{font-size:20px}
+.sh-back{width:40px;height:40px;border-radius:var(--r-ctl);display:grid;place-items:center;flex:none;border:1px solid var(--line);background:#fff;transition:transform var(--t-press) ease,background-color .15s ease}
+.sh-back:active{background:var(--line-soft);transform:scale(.96)}
+.sheet main{padding-bottom:calc(var(--sab) + var(--s11))}
+
+/* ============================ сообщения ============================ */
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--sab) + 84px);z-index:50;
+  background:var(--ink);color:#fff;font-size:13px;font-weight:600;padding:11px var(--s8);border-radius:var(--r-pill);
+  opacity:0;pointer-events:none;transition:opacity .22s ease}
+.toast.show{opacity:1}
+
+/* ============================ движение ============================ */
+/* 1. Переход между экранами: новый приходит со стороны нажатой вкладки. */
+.screen,#screen{touch-action:pan-y}
+.screen.go-l,#screen.go-l{animation:scr-l var(--t-screen) var(--e-out)}
+.screen.go-r,#screen.go-r{animation:scr-r var(--t-screen) var(--e-out)}
+@keyframes scr-l{from{opacity:0;transform:translateX(26px)}to{opacity:1;transform:none}}
+@keyframes scr-r{from{opacity:0;transform:translateX(-26px)}to{opacity:1;transform:none}}
+.hd-t.go{animation:hd-in .3s ease-out}
+@keyframes hd-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+
+/* 2. Свайп: экран едет за пальцем, потом доводится или возвращается. */
+.screen.swiping,#screen.swiping{overflow-y:hidden}
+.screen.sw-out,#screen.sw-out{transition:transform .16s ease-out}
+.screen.sw-back,#screen.sw-back{transition:transform .22s cubic-bezier(.2,.8,.3,1)}
+
+/* 3. Каскад: строки выходят по одной, задержку раздаёт OWLS.cascade(). */
+.rise{animation:rise .38s var(--e-out) both}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+/* 4. Отметка: пружинка и дорисовка галочки. */
+.pop{animation:pop .42s var(--e-spring)}
+@keyframes pop{0%{transform:scale(1)}40%{transform:scale(1.18)}100%{transform:scale(1)}}
+.box.pop{animation:box-pop .45s cubic-bezier(.2,.9,.3,1.5)}
+@keyframes box-pop{0%{transform:scale(.6)}55%{transform:scale(1.16)}100%{transform:scale(1)}}
+.box.pop path{stroke-dasharray:26;animation:tick .28s ease-out .06s both}
+@keyframes tick{from{stroke-dashoffset:26}to{stroke-dashoffset:0}}
+.nudge{animation:nudge .5s cubic-bezier(.2,.9,.3,1.3)}
+@keyframes nudge{0%{transform:scale(1)}35%{transform:scale(1.04)}100%{transform:scale(1)}}
+
+/* Уважаем системную настройку: без движения остаётся вся вёрстка, уходит только анимация. */
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}

@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#F6F4EF">
+<title>OWLS UI — пример</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@400;700;800&display=swap">
+<link rel="stylesheet" href="owls.css">
+</head>
+<body>
+
+<div id="app">
+  <header class="hd">
+    <div class="hd-t">
+      <span class="eyebrow" id="eyebrow">Задачи</span>
+      <span class="h1" id="title">Что сегодня</span>
+      <span class="hd-date" id="date"></span>
+    </div>
+    <button class="hd-mark" aria-label="Настройки">OW</button>
+  </header>
+  <main id="screen"></main>
+  <nav id="nav"></nav>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="owls-motion.js"></script>
+<script>
+'use strict';
+
+/* Каркас нового приложения на OWLS: состояние, экраны, один вызов OWLS.tabs. */
+const TABS = [
+  { key:'today',  icon:'check', label:'Сегодня'  },
+  { key:'habits', icon:'stop',  label:'Привычки' },
+  { key:'notes',  icon:'diary', label:'Заметки'  },
+];
+const TITLES = {
+  today:  ['Задачи',   'Что сегодня'],
+  habits: ['Привычки', 'Каждый день'],
+  notes:  ['Заметки',  'Коротко'],
+};
+
+const S = {
+  tab: 'today',
+  tasks: [
+    { id:'t1', text:'Собрать отчёт',        time:'10:00', done:true  },
+    { id:'t2', text:'Позвонить в сервис',   time:'12:30', done:false },
+    { id:'t3', text:'Прогулка 30 минут',    time:'18:00', done:false },
+    { id:'t4', text:'Прочитать 20 страниц', time:'21:00', done:false },
+  ],
+  habits: [
+    { id:'h1', text:'Без кофе после обеда', days:12, on:true  },
+    { id:'h2', text:'Ложиться до 23:30',    days:3,  on:true  },
+    { id:'h3', text:'Не листать ленту утром', days:0, on:false },
+  ],
+  notes: [
+    { id:'n1', date:'2 сентября', tag:'Работа', text:'Договорились перенести встречу на пятницу, материалы готовы.' },
+    { id:'n2', date:'1 сентября', tag:'Дом',    text:'Замерить нишу под полку: 182 см, глубина 30.' },
+  ],
+};
+
+const $screen = document.getElementById('screen');
+const $nav = document.getElementById('nav');
+
+/* ---- экраны ---- */
+function viewToday() {
+  const done = S.tasks.filter(t => t.done).length;
+  const next = S.tasks.find(t => !t.done);
+  return OWLS.ringCard('today', done, S.tasks.length,
+      done + ' из ' + S.tasks.length + ' задач',
+      next ? 'Дальше: ' + next.text.toLowerCase() : 'Всё закрыто. Хороший день.') +
+    '<section class="card flush">' +
+      '<div class="sec-h"><span class="sec-t">Список дня</span>' +
+        '<span class="sec-s">Нажмите, чтобы отметить</span></div>' +
+      S.tasks.map(t =>
+        '<button class="item' + (t.done ? ' is-done' : '') + '" data-act="task" data-id="' + t.id + '">' +
+          '<span class="box' + (t.done ? ' on' : '') + '">' + (t.done ? OWLS.icon('tick', { size:13, color:'#fff', width:3 }) : '') + '</span>' +
+          '<span class="txt">' + t.text + '</span>' +
+          '<span class="time">' + t.time + '</span>' +
+        '</button>').join('') +
+    '</section>';
+}
+
+function viewHabits() {
+  const on = S.habits.filter(h => h.on).length;
+  const best = S.habits.reduce((a, h) => Math.max(a, h.days), 0);
+  return OWLS.ringCard('habits', on, S.habits.length,
+      on + ' из ' + S.habits.length + ' держатся',
+      best ? 'Лучшая серия — ' + best + ' дней.' : 'Серия начинается с первого дня.') +
+    '<section class="card flush">' +
+      '<div class="sec-h"><span class="sec-t">Чего не делаю</span></div>' +
+      S.habits.map(h =>
+        '<button class="item" data-act="habit" data-id="' + h.id + '" style="min-height:60px;align-items:flex-start;padding:12px 16px">' +
+          '<span class="grow" style="display:flex;flex-direction:column;gap:5px">' +
+            '<span style="font-size:14px;font-weight:600;line-height:1.35">' + h.text + '</span>' +
+            '<span style="font-size:11.5px;color:var(--faint)">' + (h.on ? 'Чисто ' + h.days + ' дней' : 'Серия сброшена') + '</span>' +
+          '</span>' +
+          '<span class="pill ' + (h.on ? 'ok">Держусь' : 'bad">Сорвался') + '</span>' +
+        '</button>').join('') +
+    '</section>';
+}
+
+function viewNotes() {
+  return OWLS.ringCard('notes', S.notes.length, 5, S.notes.length + ' из 5 заметок', 'Пять коротких записей на неделю.') +
+    '<div class="card pad" style="display:flex;flex-direction:column;gap:14px">' +
+      '<div class="fld"><label for="n-text">Новая заметка</label>' +
+        '<textarea id="n-text" rows="2" placeholder="Одна мысль, коротко"></textarea></div>' +
+      '<button class="save" data-act="add-note">Сохранить</button></div>' +
+    '<section class="card flush">' +
+      '<div class="sec-h"><span class="sec-t">Прошлые записи</span></div>' +
+      (S.notes.length ? S.notes.map(n =>
+        '<div class="entry"><div class="row" style="gap:8px">' +
+          '<span class="entry-d">' + n.date + '</span><span class="tag">' + n.tag + '</span>' +
+          '<span class="grow"></span>' +
+          '<button class="del" data-act="del-note" data-id="' + n.id + '" aria-label="Удалить">' +
+            OWLS.icon('trash', { size:15, color:'#B43232', width:1.5 }) + '</button></div>' +
+          '<span class="entry-t">' + n.text + '</span></div>').join('')
+        : '<div class="empty">Записей пока нет.</div>') +
+    '</section>';
+}
+
+const VIEWS = { today: viewToday, habits: viewHabits, notes: viewNotes };
+
+function render() {
+  const [eyebrow, title] = TITLES[S.tab];
+  document.getElementById('eyebrow').textContent = eyebrow;
+  document.getElementById('title').textContent = title;
+  document.getElementById('date').textContent = new Date().toLocaleDateString('ru-RU', { day:'numeric', month:'long' });
+  $screen.innerHTML = VIEWS[S.tab]();
+  OWLS.afterRender($screen, S.tab);
+}
+
+/* ---- меню: рисуем один раз ---- */
+$nav.innerHTML = TABS.map(t =>
+  '<button data-tab="' + t.key + '">' + OWLS.icon(t.icon, { size:21, width:1.8 }) +
+  '<span>' + t.label + '</span><i class="ul"></i></button>').join('') +
+  '<i class="nav-ul" aria-hidden="true"></i>';
+
+/* ---- действия ---- */
+const ACTIONS = {
+  task(el) {
+    const t = S.tasks.find(x => x.id === el.dataset.id);
+    t.done = !t.done;
+    if (t.done) OWLS.splash(el.querySelector('.box'));
+    render();
+    if (t.done) {
+      OWLS.animateOnce($screen.querySelector('[data-id="' + t.id + '"] .box'), 'pop');
+      OWLS.animateOnce($screen.querySelector('.ring-card'), 'nudge');
+    }
+  },
+  habit(el) {
+    const h = S.habits.find(x => x.id === el.dataset.id);
+    h.on = !h.on;
+    if (!h.on) h.days = 0;
+    render();
+    OWLS.toast(h.on ? 'Серия продолжается' : 'Серия сброшена');
+  },
+  'add-note'() {
+    const box = document.getElementById('n-text');
+    const text = (box.value || '').trim();
+    if (!text) { OWLS.toast('Введите текст'); return; }
+    S.notes.unshift({ id: 'n' + Date.now(), date: new Date().toLocaleDateString('ru-RU', { day:'numeric', month:'long' }), tag:'Новое', text });
+    render();
+    OWLS.toast('Заметка сохранена');
+  },
+};
+
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]');
+  if (!el || el.matches('.del')) return;
+  const fn = ACTIONS[el.dataset.act];
+  if (fn) { e.preventDefault(); fn(el); }
+});
+
+/* удаление — только удержанием две секунды */
+OWLS.hold({
+  onFire(b) { S.notes = S.notes.filter(n => n.id !== b.dataset.id); render(); OWLS.toast('Удалено'); },
+  onShort() { OWLS.toast('Удерживайте 2 секунды, чтобы удалить'); },
+});
+
+/* свайп между вкладками и переход по нажатию */
+OWLS.tabs({
+  screen: $screen, nav: $nav, keys: TABS.map(t => t.key),
+  current: () => S.tab,
+  go(key) { S.tab = key; render(); },
+});
+
+render();
+OWLS.cascade($screen);
+</script>
+</body>
+</html>
