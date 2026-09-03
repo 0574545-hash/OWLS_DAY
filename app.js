@@ -1522,7 +1522,7 @@ const ACTIONS = {
 
   /* копия данных */
   async 'bk-save'() {
-    const name = 'Трекер дня ' + dayKeyOf(new Date()) + '.json';
+    const name = 'Трекер дня.json';                    // одно имя: iOS предложит заменить прежнюю копию
     let ok = false;
     try { ok = await deliverFile(backupBlob(), name); }
     catch (e) { toast('Не удалось собрать копию: ' + (e && e.message || e)); return; }
@@ -2117,7 +2117,7 @@ function sheetData() {
       '<span class="note">Один файл со всем: списки, отметки, история, фото. В окне «Поделиться» выберите «Сохранить в Файлы» и папку в iCloud Drive — тогда копия будет и на новом телефоне.</span>' +
       '<button class="btn-add" data-act="bk-save">Сохранить копию</button>' +
       '<button class="btn-ghost" data-act="bk-restore" style="justify-content:center">Восстановить из копии</button>' +
-      '<span class="note">Восстановление заменяет все данные на телефоне данными из файла. Напоминание о копии появляется раз в неделю.</span>' +
+      '<span class="note">Файл всегда один, «Трекер дня.json»: при следующем сохранении iOS предложит заменить прежний. Восстановление заменяет все данные на телефоне данными из файла. Напоминание о копии появляется раз в неделю.</span>' +
     '</div>' +
     '<div class="form">' +
       '<span class="sec-t">Excel</span>' +
