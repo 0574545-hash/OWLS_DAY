@@ -134,9 +134,9 @@ main > *{flex:0 0 auto}
 .del{flex:none;width:32px;height:32px;display:grid;place-items:center;border-radius:8px;opacity:.45}
 .del:active{opacity:1}
 .del{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:manipulation;position:relative;overflow:hidden}
-.del.holding{opacity:1;animation:holdfill 2s linear forwards}
+.del.holding{opacity:1;animation:holdfill 1s linear forwards}
 @keyframes holdfill{0%{background:transparent;transform:scale(1)}15%{transform:scale(1.12)}100%{background:var(--bad-bg);transform:scale(1.12)}}
-.del.holding::after{content:'';position:absolute;left:0;bottom:0;height:3px;width:0;background:var(--bad);animation:holdbar 2s linear forwards}
+.del.holding::after{content:'';position:absolute;left:0;bottom:0;height:3px;width:0;background:var(--bad);animation:holdbar 1s linear forwards}
 @keyframes holdbar{to{width:100%}}
 
 /* ---------- stop ---------- */
@@ -186,6 +186,9 @@ main > *{flex:0 0 auto}
 .save{height:48px;border-radius:10px;background:var(--ink);display:grid;place-items:center;font-size:14px;font-weight:700;color:#fff;width:100%}
 .save:active{opacity:.85}
 .entry{padding:14px 16px;border-bottom:1px solid var(--line-soft);display:flex;flex-direction:column;gap:6px}
+.entry[data-act]{cursor:pointer;-webkit-tap-highlight-color:transparent}
+.entry[data-act]:active{background:var(--line-soft)}
+.entry.editing{background:var(--accent-soft);border-bottom-color:var(--accent)}
 .entry-d{font-size:12px;font-weight:700}
 .entry-t{font-size:13px;line-height:1.5;color:var(--muted)}
 
@@ -302,6 +305,13 @@ nav span{transition:color .2s ease}
 
 /* строки списков в настройках */
 .mini{display:flex;align-items:center;gap:12px;padding:10px 16px;min-height:56px;border-bottom:1px solid var(--line-soft)}
+.mini[data-act]{cursor:pointer;-webkit-tap-highlight-color:transparent}
+.mini[data-act]:active{background:var(--line-soft)}
+.mini.editing{background:var(--accent-soft);border-bottom-color:var(--accent)}
+.mini .m-e{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--accent);flex:none}
+.btn-row{display:flex;gap:10px}
+.btn-row > *{flex:1;min-width:0}
+.btn-ghost.wide{justify-content:center}
 .mini .m-t{font-size:14px;line-height:1.35;color:var(--ink)}
 .mini .m-s{font-size:11.5px;color:var(--faint);margin-top:3px}
 .blk{font-family:var(--display);font-weight:400;font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);padding:16px 16px 8px}
@@ -396,6 +406,6 @@ canvas#fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-in
   <button class="save" data-act="hard-reset">Сбросить кэш и перезагрузить</button>
 </div>
 <div class="toast" id="toast"></div>
-<script src="app.js?v=15"></script>
+<script src="app.js?v=16"></script>
 </body>
 </html>

@@ -122,6 +122,16 @@ function repeatLabel(days) {
   return DOW.filter(x => d.includes(x.n)).map(x => x.s).join(', ');
 }
 
+/** Обратное к repeatLabel: по набору дней определяем режим в форме. */
+function modeFromDays(days) {
+  const d = [...(days || EVERYDAY)].sort((a, b) => a - b);
+  const same = arr => arr.length === d.length && arr.every(x => d.includes(x));
+  if (same(EVERYDAY)) return 'every';
+  if (same(WEEKDAY_SET)) return 'weekdays';
+  if (same(WEEKEND_SET)) return 'weekend';
+  return 'custom';
+}
+
 /** Показывать ли пункт сегодня. */
 const onToday = i => (i.days || EVERYDAY).includes(new Date().getDay());
 
@@ -584,13 +594,19 @@ function viewDiary() {
         '<textarea id="f-hard" data-draft="hard" maxlength="200" rows="2" placeholder="Без оценок, просто факт">' + esc(S.fields.hard) + '</textarea></div>' +
       '<div class="fld"><label for="f-thanks">Благодарность</label>' +
         '<textarea id="f-thanks" data-draft="thanks" maxlength="200" rows="2" placeholder="За что сегодня">' + esc(S.fields.thanks) + '</textarea></div>' +
-      '<button class="save" data-act="save-entry">Сохранить запись</button></div>' +
+      (editing('entry')
+        ? '<div class="btn-row"><button class="save" data-act="save-entry">Обновить запись</button>' +
+          '<button class="btn-ghost wide" data-act="edit-cancel">Отменить</button></div>'
+        : '<button class="save" data-act="save-entry">Сохранить запись</button>') + '</div>' +
     '<section class="card flush">' +
       '<div class="sec-h"><span class="sec-t">Прошлые записи</span></div>' +
       (S.entries.length ? S.entries.map(e =>
-        '<div class="entry"><div class="row" style="gap:8px">' +
+        '<div class="entry' + (editing('entry') && E.id === e.id ? ' editing' : '') +
+          '" data-act="edit-entry" data-id="' + e.id + '"><div class="row" style="gap:8px">' +
           '<span class="entry-d">' + esc(e.date) + '</span><span class="tag">' + esc(e.mood) + '</span>' +
-          '<span class="grow"></span>' + trashBtn('del-entry', 'data-id="' + e.id + '"', 'Удалить запись') + '</div>' +
+          '<span class="grow"></span>' +
+          (editing('entry') && E.id === e.id ? '<span class="m-e">правка</span>' : '') +
+          trashBtn('del-entry', 'data-id="' + e.id + '"', 'Удалить запись') + '</div>' +
           '<span class="entry-t">' + esc(e.text) + '</span></div>').join('')
         : '<div class="empty">Записей пока нет.</div>') + '</section>';
 }
@@ -758,6 +774,37 @@ const F = {
   med: { name:'', form:'tab', qty:'1', phase:'morning', meal:'after', every:'1' },
 };
 
+/* Что сейчас правим: {kind, id, phase?, stash?}. null — режим добавления. */
+let E = null;
+const editing = kind => !!E && E.kind === kind;
+
+/** Заголовок формы: разный для добавления и правки. */
+const formTitle = (kind, add, edit) => '<span class="sec-t">' + (editing(kind) ? edit : add) + '</span>';
+
+/** Кнопки формы: «Добавить» либо «Сохранить» + «Отменить». */
+const formBtns = (kind, addAct, addLabel) => editing(kind)
+  ? '<div class="btn-row"><button class="btn-add" data-act="save-' + kind + '">Сохранить</button>' +
+    '<button class="btn-ghost wide" data-act="edit-cancel">Отменить</button></div>'
+  : '<button class="btn-add" data-act="' + addAct + '">' + addLabel + '</button>';
+
+/** Класс строки: подсвечиваем ту, что правим. */
+const rowCls = (kind, id) => 'mini' + (editing(kind) && E.id === id ? ' editing' : '');
+
+/** Уходим из правки: черновик дневника возвращаем на место. */
+function cancelEdit(silent) {
+  if (E && E.kind === 'entry' && E.stash) {
+    S.fields = E.stash.fields;
+    S.mood = E.stash.mood;
+  }
+  const was = E;
+  E = null;
+  if (was && !silent) {
+    if (was.kind === 'entry') { save(); render(false); }
+    else renderSheet();
+  }
+  return was;
+}
+
 function daysFromMode() {
   if (F.item.mode === 'every') return [...EVERYDAY];
   if (F.item.mode === 'weekdays') return [...WEEKDAY_SET];
@@ -769,7 +816,7 @@ function sheetCheck() {
   const blk = phaseOfTime(F.item.time);
   const blkName = PHASES.find(p => p.key === blk).name;
   let h = '<div class="form">' +
-    '<span class="sec-t">Новый пункт</span>' +
+    formTitle('item', 'Новый пункт', 'Изменить пункт') +
     '<div class="f"><label for="i-text">Название</label>' +
       '<input id="i-text" type="text" data-f="item.text" maxlength="200" value="' + esc(F.item.text) + '" placeholder="Например, прогулка 30 минут"></div>' +
     '<div class="f2">' +
@@ -787,40 +834,51 @@ function sheetCheck() {
           DOW.map(d => '<button data-act="dow" data-n="' + d.n + '" class="' + (F.item.days.includes(d.n) ? 'on' : '') + '">' +
             d.s + '</button>').join('') + '</div></div>'
       : '') +
-    '<span class="note">Блок выбирается по времени. Этот пункт попадёт в <b>' + blkName + '</b>.</span>' +
-    '<button class="btn-add" data-act="add-item">Добавить пункт</button></div>';
+    '<span class="note">Блок выбирается по времени. ' + (editing('item') ? 'Пункт будет в' : 'Этот пункт попадёт в') +
+      ' <b>' + blkName + '</b>.</span>' +
+    formBtns('item', 'add-item', 'Добавить пункт') + '</div>';
 
   for (const p of PHASES) {
     const list = S.items[p.key];
     if (!list.length) continue;
     h += '<div class="blk">' + p.name + '</div>' + list.map(i =>
-      '<div class="mini"><span class="grow">' +
+      '<div class="' + rowCls('item', i.id) + '" data-act="edit-item" data-phase="' + p.key + '" data-id="' + i.id + '">' +
+        '<span class="grow">' +
         '<div class="m-t">' + esc(i.text) + '</div>' +
         '<div class="m-s">' + (i.time ? esc(i.time) + ' · ' : '') + repeatLabel(i.days) + '</div></span>' +
+        (editing('item') && E.id === i.id ? '<span class="m-e">правка</span>' : '') +
         trashBtn('del-item', 'data-phase="' + p.key + '" data-id="' + i.id + '"', 'Удалить пункт') + '</div>').join('');
   }
 
   h += '<div class="blk">В моменте</div>' +
-    '<div class="add"><input type="text" data-f="moment" maxlength="200" value="' + esc(F.moment) +
-      '" placeholder="Отметка без времени" enterkeyhint="done">' +
-      '<button class="plus" data-act="add-moment" aria-label="Добавить">' + svg('plus', { size:17, color:'#fff', width:2.2 }) +
-      '</button></div>' +
-    S.moments.map(m => '<div class="mini"><span class="grow m-t">' + esc(m.label) + '</span>' +
+    (editing('moment')
+      ? '<div class="form">' + formTitle('moment', '', 'Изменить отметку') +
+          '<div class="f"><label for="q-text">Название</label>' +
+          '<input id="q-text" type="text" data-f="moment" maxlength="200" value="' + esc(F.moment) + '"></div>' +
+          formBtns('moment', 'add-moment', '') + '</div>'
+      : '<div class="add"><input type="text" data-f="moment" maxlength="200" value="' + esc(F.moment) +
+          '" placeholder="Отметка без времени" enterkeyhint="done">' +
+          '<button class="plus" data-act="add-moment" aria-label="Добавить">' + svg('plus', { size:17, color:'#fff', width:2.2 }) +
+          '</button></div>') +
+    S.moments.map(m => '<div class="' + rowCls('moment', m.id) + '" data-act="edit-moment" data-id="' + m.id + '">' +
+      '<span class="grow m-t">' + esc(m.label) + '</span>' +
+      (editing('moment') && E.id === m.id ? '<span class="m-e">правка</span>' : '') +
       trashBtn('del-moment', 'data-id="' + m.id + '"', 'Удалить отметку') + '</div>').join('');
   return h;
 }
 
 function sheetStop() {
   return '<div class="form">' +
-      '<span class="sec-t">Новый запрет</span>' +
+      formTitle('stop', 'Новый запрет', 'Изменить запрет') +
       '<div class="f"><label for="s-text">Чего не делаю</label>' +
         '<input id="s-text" type="text" data-f="stop" maxlength="200" value="' + esc(F.stop) + '" placeholder="Например, телефон в кровати"></div>' +
-      '<button class="btn-add" data-act="add-stop">Добавить запрет</button></div>' +
+      formBtns('stop', 'add-stop', 'Добавить запрет') + '</div>' +
     (S.stops.length ? S.stops.map(x =>
-      '<div class="mini"><span class="grow">' +
+      '<div class="' + rowCls('stop', x.id) + '" data-act="edit-stop" data-id="' + x.id + '"><span class="grow">' +
         '<div class="m-t">' + esc(x.text) + '</div>' +
         '<div class="m-s">' + (x.slipped ? 'Сорвался сегодня' : 'Чисто ' + x.clean + ' ' + plural(x.clean, 'день', 'дня', 'дней')) + '</div>' +
-      '</span>' + trashBtn('del-stop', 'data-id="' + x.id + '"', 'Удалить запрет') + '</div>').join('')
+      '</span>' + (editing('stop') && E.id === x.id ? '<span class="m-e">правка</span>' : '') +
+      trashBtn('del-stop', 'data-id="' + x.id + '"', 'Удалить запрет') + '</div>').join('')
       : '<div class="empty">Пока пусто.</div>');
 }
 
@@ -831,7 +889,7 @@ function sheetMeds() {
   const phases = Object.fromEntries(PHASES.map(p => [p.key, p.name]));
   const meals = { before:'До еды', with:'Во время еды', after:'После еды' };
   let h = '<div class="form">' +
-    '<span class="sec-t">Новое лекарство</span>' +
+    formTitle('med', 'Новое лекарство', 'Изменить лекарство') +
     '<div class="f"><label for="m-name">Название</label>' +
       '<input id="m-name" type="text" data-f="med.name" maxlength="200" value="' + esc(F.med.name) + '" placeholder="Например, магний"></div>' +
     '<div class="f2">' +
@@ -842,15 +900,20 @@ function sheetMeds() {
       '<div class="f"><label>Когда</label>' + sel('phase', phases, F.med.phase) + '</div>' +
       '<div class="f"><label>Приём</label>' + sel('meal', meals, F.med.meal) + '</div></div>' +
     '<div class="f"><label>Частота</label>' + sel('every', MED_EVERY, String(F.med.every)) + '</div>' +
-    (String(F.med.every) !== '1' ? '<span class="note">Отсчёт с сегодняшнего дня: первый приём — сегодня.</span>' : '') +
-    '<button class="btn-add" data-act="add-med">Добавить лекарство</button></div>';
+    (String(F.med.every) !== '1'
+      ? '<span class="note">' + (editing('med')
+          ? (() => { const m = S.meds.find(x => x.id === E.id); return 'Отсчёт остаётся с ' + (m && m.start ? fmtDate(m.start) : 'дня добавления') + '.'; })()
+          : 'Отсчёт с сегодняшнего дня: первый приём — сегодня.') + '</span>'
+      : '') +
+    formBtns('med', 'add-med', 'Добавить лекарство') + '</div>';
   for (const p of PHASES) {
     const list = S.meds.filter(m => m.phase === p.key);
     if (!list.length) continue;
     h += '<div class="blk">' + p.name + '</div>' + list.map(m =>
-      '<div class="mini"><span class="grow">' +
+      '<div class="' + rowCls('med', m.id) + '" data-act="edit-med" data-id="' + m.id + '"><span class="grow">' +
         '<div class="m-t">' + esc(m.name) + '</div>' +
         '<div class="m-s">' + esc(medLineFull(m)) + (medToday(m) ? '' : ' · следующий через ' + medNextIn(m) + ' ' + plural(medNextIn(m), 'день', 'дня', 'дней')) + '</div></span>' +
+        (editing('med') && E.id === m.id ? '<span class="m-e">правка</span>' : '') +
         trashBtn('del-med', 'data-id="' + m.id + '"', 'Удалить лекарство') + '</div>').join('');
   }
   if (!S.meds.length) h += '<div class="empty">Пока пусто.</div>';
@@ -859,13 +922,15 @@ function sheetMeds() {
 
 function sheetSet() {
   return '<div class="form">' +
-      '<span class="sec-t">Новая установка</span>' +
+      formTitle('intent', 'Новая установка', 'Изменить установку') +
       '<div class="f"><label for="t-text">Текст</label>' +
         '<input id="t-text" type="text" data-f="set" maxlength="200" value="' + esc(F.set) + '" placeholder="Например, я делаю меньше, но лучше"></div>' +
       '<span class="note">Одна из установок показывается на заставке при запуске.</span>' +
-      '<button class="btn-add" data-act="add-intent">Добавить установку</button></div>' +
+      formBtns('intent', 'add-intent', 'Добавить установку') + '</div>' +
     (S.intentions.length ? S.intentions.map(i =>
-      '<div class="mini"><span class="grow m-t">' + esc(i.text) + '</span>' +
+      '<div class="' + rowCls('intent', i.id) + '" data-act="edit-intent" data-id="' + i.id + '">' +
+      '<span class="grow m-t">' + esc(i.text) + '</span>' +
+      (editing('intent') && E.id === i.id ? '<span class="m-e">правка</span>' : '') +
       trashBtn('del-intent', 'data-id="' + i.id + '"', 'Удалить установку') + '</div>').join('')
       : '<div class="empty">Пока пусто.</div>');
 }
@@ -875,7 +940,7 @@ function sheetWish() {
     ? '<img class="thumb-lg" src="' + F.wish.photo + '" alt="">'
     : '<span class="thumb-lg ph-empty">Без<br>фото</span>';
   return '<div class="form">' +
-      '<span class="sec-t">Новое желание</span>' +
+      formTitle('wish', 'Новое желание', 'Изменить желание') +
       '<div class="f"><label for="w-text">Название</label>' +
         '<input id="w-text" type="text" data-f="wish.text" maxlength="200" value="' + esc(F.wish.text) + '" placeholder="Например, курс по керамике"></div>' +
       '<div class="f"><label for="w-due">Дата</label>' +
@@ -885,14 +950,14 @@ function sheetWish() {
           svg('photo', { size:16, color:'#6B7280', width:1.5 }) + '<span>' + (F.wish.photo ? 'Заменить' : 'Выбрать фото') + '</span></button>' +
         (F.wish.photo ? '<button class="btn-ghost" data-act="drop-photo">Убрать</button>' : '') +
       '</div></div>' +
-      '<button class="btn-add" data-act="add-wish">Добавить желание</button></div>' +
+      formBtns('wish', 'add-wish', 'Добавить желание') + '</div>' +
     (S.wishes.length ? S.wishes.map(w => {
       const t = w.photo ? '<img class="thumb" src="' + w.photo + '" alt="">' : '<span class="thumb ph-empty">Нет<br>фото</span>';
-      return '<div class="mini">' + t + '<span class="grow">' +
+      return '<div class="' + rowCls('wish', w.id) + '" data-act="edit-wish" data-id="' + w.id + '">' + t +
+        '<span class="grow">' +
         '<div class="m-t">' + esc(w.text) + '</div>' +
         '<div class="m-s">' + (w.due ? 'до ' + fmtDate(w.due) : 'без даты') + (w.done ? ' · исполнено' : '') + '</div></span>' +
-        '<button class="del" data-act="pick-photo" data-target="' + w.id + '" aria-label="Фото желания">' +
-          svg('photo', { size:16, color:'#6B7280', width:1.5 }) + '</button>' +
+        (editing('wish') && E.id === w.id ? '<span class="m-e">правка</span>' : '') +
         trashBtn('del-wish', 'data-id="' + w.id + '"', 'Удалить желание') + '</div>';
     }).join('') : '<div class="empty">Пока пусто.</div>');
 }
@@ -913,6 +978,7 @@ function openSheet() {
   $sheet.setAttribute('aria-hidden', 'false');
 }
 function closeSheet() {
+  cancelEdit(true);
   sheetOpen = false;
   $sheet.classList.remove('open');
   $sheet.setAttribute('aria-hidden', 'true');
@@ -1068,6 +1134,7 @@ function commitSheet() { save(); renderSheet(); }
 const ACTIONS = {
   /* навигация */
   tab(el) {
+    cancelEdit(true);
     const next = el.dataset.tab;
     if (next === S.tab) { $screen.scrollTo({ top:0, behavior: reducedMotion ? 'auto' : 'smooth' }); return; }
     const dir = TABS.findIndex(t => t.key === next) > TABS.findIndex(t => t.key === S.tab) ? 'l' : 'r';
@@ -1076,7 +1143,7 @@ const ACTIONS = {
   },
   settings() { openSheet(); },
   'close-settings'() { closeSheet(); },
-  'sheet-tab'(el) { sheetTab = el.dataset.tab; renderSheet(); },
+  'sheet-tab'(el) { cancelEdit(true); sheetTab = el.dataset.tab; renderSheet(); },
 
   /* главный экран */
   item(el) {
@@ -1117,16 +1184,42 @@ const ACTIONS = {
   mood(el) { S.mood = Number(el.dataset.i); commit(); },
   'save-entry'() {
     const f = S.fields;
-    const text = [f.good, f.hard, f.thanks].map(t => (t || '').trim()).filter(Boolean).join(' · ');
+    const parts = { good:(f.good || '').trim(), hard:(f.hard || '').trim(), thanks:(f.thanks || '').trim() };
+    const text = [parts.good, parts.hard, parts.thanks].filter(Boolean).join(' · ');
     if (!text) { toast('Заполните хотя бы одно поле'); return; }
+    if (editing('entry')) {
+      const e = S.entries.find(x => x.id === E.id);
+      if (e) { e.text = text; e.parts = parts; e.mood = MOODS[S.mood]; }
+      S.fields = E.stash.fields; S.mood = E.stash.mood;
+      E = null;
+      commit(false);
+      toast('Запись обновлена');
+      return;
+    }
     const d = new Date();
-    S.entries.unshift({ id: uid('x'), date: d.getDate() + ' ' + MONTHS[d.getMonth()], mood: MOODS[S.mood], text });
+    S.entries.unshift({ id: uid('x'), date: d.getDate() + ' ' + MONTHS[d.getMonth()], mood: MOODS[S.mood], text, parts });
     S.fields = { good:'', hard:'', thanks:'' };
     splashAt(document.querySelector('[data-act="save-entry"]'));
     commit(false);
     toast('Запись сохранена');
   },
-  'del-entry'(el) { S.entries = S.entries.filter(x => x.id !== el.dataset.id); commit(); },
+  'del-entry'(el) {
+    if (editing('entry') && E.id === el.dataset.id) cancelEdit(true);
+    S.entries = S.entries.filter(x => x.id !== el.dataset.id);
+    commit();
+  },
+  'edit-entry'(el) {
+    const e = S.entries.find(x => x.id === el.dataset.id);
+    if (!e) return;
+    if (editing('entry') && E.id === e.id) { ACTIONS['edit-cancel'](); return; }
+    const stash = editing('entry') ? E.stash : { fields: { ...S.fields }, mood: S.mood };
+    E = { kind:'entry', id:e.id, stash };
+    const p = e.parts || { good: e.text || '', hard:'', thanks:'' };
+    S.fields = { good:p.good || '', hard:p.hard || '', thanks:p.thanks || '' };
+    const mi = MOODS.indexOf(e.mood);
+    if (mi >= 0) S.mood = mi;
+    render(false);
+  },
 
   /* настройки: чек-лист */
   dow(el) {
@@ -1148,6 +1241,7 @@ const ACTIONS = {
     toast('Пункт добавлен');
   },
   'del-item'(el) {
+    if (editing('item') && E.id === el.dataset.id) ACTIONS['edit-cancel']();
     S.items[el.dataset.phase] = S.items[el.dataset.phase].filter(x => x.id !== el.dataset.id);
     commitSheet();
   },
@@ -1158,7 +1252,11 @@ const ACTIONS = {
     F.moment = '';
     commitSheet();
   },
-  'del-moment'(el) { S.moments = S.moments.filter(x => x.id !== el.dataset.id); commitSheet(); },
+  'del-moment'(el) {
+    if (editing('moment') && E.id === el.dataset.id) ACTIONS['edit-cancel']();
+    S.moments = S.moments.filter(x => x.id !== el.dataset.id);
+    commitSheet();
+  },
 
   /* лекарства */
   med(el) {
@@ -1180,7 +1278,11 @@ const ACTIONS = {
     commitSheet();
     toast('Лекарство добавлено');
   },
-  'del-med'(el) { S.meds = S.meds.filter(x => x.id !== el.dataset.id); commitSheet(); },
+  'del-med'(el) {
+    if (editing('med') && E.id === el.dataset.id) ACTIONS['edit-cancel']();
+    S.meds = S.meds.filter(x => x.id !== el.dataset.id);
+    commitSheet();
+  },
 
   /* настройки: стоп-лист */
   'add-stop'() {
@@ -1191,7 +1293,11 @@ const ACTIONS = {
     commitSheet();
     toast('Запрет добавлен');
   },
-  'del-stop'(el) { S.stops = S.stops.filter(x => x.id !== el.dataset.id); commitSheet(); },
+  'del-stop'(el) {
+    if (editing('stop') && E.id === el.dataset.id) ACTIONS['edit-cancel']();
+    S.stops = S.stops.filter(x => x.id !== el.dataset.id);
+    commitSheet();
+  },
 
   /* настройки: установки */
   'add-intent'() {
@@ -1202,7 +1308,11 @@ const ACTIONS = {
     commitSheet();
     toast('Установка добавлена');
   },
-  'del-intent'(el) { S.intentions = S.intentions.filter(x => x.id !== el.dataset.id); commitSheet(); },
+  'del-intent'(el) {
+    if (editing('intent') && E.id === el.dataset.id) ACTIONS['edit-cancel']();
+    S.intentions = S.intentions.filter(x => x.id !== el.dataset.id);
+    commitSheet();
+  },
 
   /* настройки: желания */
   'pick-photo'(el) { photoTarget = el.dataset.target; $photo.click(); },
@@ -1219,7 +1329,144 @@ const ACTIONS = {
     renderSheet();
     toast('Желание добавлено');
   },
-  'del-wish'(el) { S.wishes = S.wishes.filter(x => x.id !== el.dataset.id); commitSheet(); },
+  'del-wish'(el) {
+    if (editing('wish') && E.id === el.dataset.id) ACTIONS['edit-cancel']();
+    S.wishes = S.wishes.filter(x => x.id !== el.dataset.id);
+    commitSheet();
+  },
+
+  /* правка позиций */
+  'edit-cancel'() {
+    if (E) {
+      if (E.kind === 'item') F.item = { text:'', time:'', mode:'every', days:[...EVERYDAY] };
+      else if (E.kind === 'moment') F.moment = '';
+      else if (E.kind === 'stop') F.stop = '';
+      else if (E.kind === 'intent') F.set = '';
+      else if (E.kind === 'med') F.med = { name:'', form:'tab', qty:'1', phase:F.med.phase, meal:F.med.meal, every:'1' };
+      else if (E.kind === 'wish') F.wish = { text:'', due:'', photo:'' };
+    }
+    cancelEdit();
+  },
+  'edit-item'(el) {
+    const phase = el.dataset.phase;
+    const i = (S.items[phase] || []).find(x => x.id === el.dataset.id);
+    if (!i) return;
+    if (editing('item') && E.id === i.id) { ACTIONS['edit-cancel'](); return; }
+    E = { kind:'item', id:i.id, phase };
+    F.item = { text:i.text, time:i.time || '', mode:modeFromDays(i.days), days:[...(i.days || EVERYDAY)] };
+    renderSheet(); $sheetBody.scrollTop = 0;
+  },
+  'save-item'() {
+    const text = F.item.text.trim();
+    if (!text) { toast('Введите название'); return; }
+    const days = daysFromMode();
+    if (!days.length) { toast('Выберите хотя бы один день'); return; }
+    const from = E.phase;
+    const idx = (S.items[from] || []).findIndex(x => x.id === E.id);
+    if (idx < 0) { ACTIONS['edit-cancel'](); return; }
+    const upd = { ...S.items[from][idx], text, time:F.item.time, days };
+    const to = phaseOfTime(F.item.time);
+    S.items[from].splice(idx, 1);
+    S.items[to].push(upd);
+    S.items[to].sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
+    F.item = { text:'', time:'', mode:'every', days:[...EVERYDAY] };
+    E = null;
+    commitSheet();
+    toast(from === to ? 'Пункт изменён' : 'Переехал в ' + PHASES.find(p => p.key === to).name.toLowerCase());
+  },
+  'edit-moment'(el) {
+    const m = S.moments.find(x => x.id === el.dataset.id);
+    if (!m) return;
+    if (editing('moment') && E.id === m.id) { ACTIONS['edit-cancel'](); return; }
+    E = { kind:'moment', id:m.id };
+    F.moment = m.label;
+    renderSheet();
+  },
+  'save-moment'() {
+    const t = F.moment.trim();
+    if (!t) { toast('Введите название'); return; }
+    const m = S.moments.find(x => x.id === E.id);
+    if (m) m.label = t;
+    F.moment = ''; E = null;
+    commitSheet(); toast('Отметка изменена');
+  },
+  'edit-stop'(el) {
+    const x = S.stops.find(y => y.id === el.dataset.id);
+    if (!x) return;
+    if (editing('stop') && E.id === x.id) { ACTIONS['edit-cancel'](); return; }
+    E = { kind:'stop', id:x.id };
+    F.stop = x.text;
+    renderSheet(); $sheetBody.scrollTop = 0;
+  },
+  'save-stop'() {
+    const t = F.stop.trim();
+    if (!t) { toast('Введите название'); return; }
+    const x = S.stops.find(y => y.id === E.id);
+    if (x) x.text = t;
+    F.stop = ''; E = null;
+    commitSheet(); toast('Запрет изменён');
+  },
+  'edit-intent'(el) {
+    const i = S.intentions.find(x => x.id === el.dataset.id);
+    if (!i) return;
+    if (editing('intent') && E.id === i.id) { ACTIONS['edit-cancel'](); return; }
+    E = { kind:'intent', id:i.id };
+    F.set = i.text;
+    renderSheet(); $sheetBody.scrollTop = 0;
+  },
+  'save-intent'() {
+    const t = F.set.trim();
+    if (!t) { toast('Введите текст'); return; }
+    const i = S.intentions.find(x => x.id === E.id);
+    if (i) i.text = t;
+    F.set = ''; E = null;
+    commitSheet(); toast('Установка изменена');
+  },
+  'edit-med'(el) {
+    const m = S.meds.find(x => x.id === el.dataset.id);
+    if (!m) return;
+    if (editing('med') && E.id === m.id) { ACTIONS['edit-cancel'](); return; }
+    E = { kind:'med', id:m.id };
+    F.med = { name:m.name, form:m.form, qty:String(m.qty), phase:m.phase, meal:m.meal, every:String(m.every || 1) };
+    renderSheet(); $sheetBody.scrollTop = 0;
+  },
+  'save-med'() {
+    const name = F.med.name.trim();
+    if (!name) { toast('Введите название'); return; }
+    const m = S.meds.find(x => x.id === E.id);
+    if (!m) { ACTIONS['edit-cancel'](); return; }
+    m.name = name;
+    m.form = F.med.form;
+    m.qty = Math.min(99, Math.max(1, Math.round(Number(F.med.qty) || 1)));
+    m.phase = F.med.phase;
+    m.meal = F.med.meal;
+    m.every = Number(F.med.every) || 1;
+    F.med = { name:'', form:'tab', qty:'1', phase:m.phase, meal:m.meal, every:'1' };
+    E = null;
+    commitSheet(); toast('Лекарство изменено');
+  },
+  'edit-wish'(el) {
+    const w = S.wishes.find(x => x.id === el.dataset.id);
+    if (!w) return;
+    if (editing('wish') && E.id === w.id) { ACTIONS['edit-cancel'](); return; }
+    E = { kind:'wish', id:w.id };
+    F.wish = { text:w.text, due:w.due || '', photo:w.photo || '' };
+    renderSheet(); $sheetBody.scrollTop = 0;
+  },
+  'save-wish'() {
+    const t = F.wish.text.trim();
+    if (!t) { toast('Введите название'); return; }
+    const w = S.wishes.find(x => x.id === E.id);
+    if (!w) { ACTIONS['edit-cancel'](); return; }
+    const oldPhoto = w.photo;
+    w.text = t; w.due = F.wish.due; w.photo = F.wish.photo;
+    const ok = save();
+    if (!ok) { w.photo = oldPhoto; save(); }
+    F.wish = { text:'', due:'', photo:'' };
+    E = null;
+    renderSheet();
+    toast(ok ? 'Желание изменено' : 'Фото не поместилось — остальное сохранено');
+  },
 
   /* настройки: данные */
   'xl-export'() {
@@ -1253,8 +1500,8 @@ document.addEventListener('pointerup', cancelHold);
 document.addEventListener('pointercancel', cancelHold);
 document.addEventListener('contextmenu', e => { if (e.target.closest('.chip')) e.preventDefault(); });
 
-/* удаление — только по удержанию 2 с, чтобы не снести пункт случайным касанием */
-const DEL_MS = 2000;
+/* удаление — только по удержанию 1 с, чтобы не снести пункт случайным касанием */
+const DEL_MS = 1000;
 let delTimer = null, delEl = null, delFired = false, delX = 0, delY = 0;
 function cancelDel() {
   clearTimeout(delTimer); delTimer = null;
@@ -1284,7 +1531,7 @@ document.addEventListener('click', e => {
   if (!el) return;
   if (el.matches('.del[data-act^="del-"]')) {          // клик по корзине сам по себе ничего не удаляет
     e.preventDefault();
-    if (delFired) delFired = false; else toast('Удерживайте 2 секунды, чтобы удалить');
+    if (delFired) delFired = false; else toast('Удерживайте секунду, чтобы удалить');
     return;
   }
   const fn = ACTIONS[el.dataset.act];
