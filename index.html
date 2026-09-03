@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
-<meta name="theme-color" content="#F6F4EF" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#F6F4EF">
+<meta name="theme-color" content="#F0E9DC" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#F0E9DC">
 <meta name="description" content="Трекер дня OWLS — чек-лист, стоп-лист, установки, желания и дневник.">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -24,8 +24,9 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@400;700;800&display=swap">
 <style>
 :root{
-  --bg:#F6F4EF; --card:#FFFFFF; --line:#E1DCD0; --line-soft:#EFECE3; --line-input:#E9E5DC;
-  --ink:#0B1E35; --ink-2:#2A3A52; --muted:#6B7280; --faint:#9AA1AB;
+  --bg:#F0E9DC; --card:#FFFFFF; --line:#E0D7C4; --line-soft:#EBE3D5; --line-input:#E5DCC9;
+  --ink:#0B1E35; --ink-2:#2A3A52; --muted:#6B6152; --faint:#9A8F7C;
+  --edge:#C4B79E;                     /* обводка пустой галочки и пунктир */
   --accent:#F26336; --accent-soft:#FEEFEA; --accent-dark:#D94B1F;
   --ok:#1E7A3C; --ok-bg:#DCF5E4; --bad:#B43232; --bad-bg:#FBD9D9;
   --display:'Unbounded',system-ui,sans-serif;
@@ -58,7 +59,7 @@ input:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px soli
 }
 @supports not (height:100svh){ #app,#sheet{ bottom:0; height:auto; } }
 @media (min-width:600px){
-  body{background:#EDEAE1}
+  body{background:#E3DACA}
   #app{position:relative;height:100dvh;max-height:100dvh}
 }
 
@@ -133,7 +134,7 @@ main > *{flex:0 0 auto}
 .bar{height:4px;border-radius:999px;background:var(--line-soft);overflow:hidden}
 .bar i{display:block;height:100%;background:var(--accent);border-radius:999px;transition:width .35s ease}
 .item{display:flex;align-items:center;gap:12px;padding:6px 16px;min-height:52px;border-bottom:1px solid var(--line-soft);width:100%;text-align:left}
-.box{width:24px;height:24px;border-radius:7px;background:#fff;border:1.5px solid #C9C2B1;flex:none;display:grid;place-items:center}
+.box{width:24px;height:24px;border-radius:7px;background:#fff;border:1.5px solid var(--edge);flex:none;display:grid;place-items:center}
 .box.on{background:var(--accent);border-color:var(--accent)}
 .item .txt{flex:1;min-width:0;font-size:14px;line-height:1.35}
 .item.is-done .txt{color:var(--faint);text-decoration:line-through}
@@ -170,7 +171,7 @@ main > *{flex:0 0 auto}
 .wish-t{font-size:14.5px;font-weight:600;line-height:1.35}
 .is-done .wish-t{color:var(--faint);text-decoration:line-through}
 .tag{font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-2);background:var(--bg);border:1px solid var(--line-input);border-radius:6px;padding:3px 8px}
-.circ{width:24px;height:24px;border-radius:999px;background:#fff;border:1.5px solid #C9C2B1;flex:none;display:grid;place-items:center}
+.circ{width:24px;height:24px;border-radius:999px;background:#fff;border:1.5px solid var(--edge);flex:none;display:grid;place-items:center}
 .circ.on{background:var(--accent);border-color:var(--accent)}
 .wish-b{border-top:1px solid var(--line-soft);padding:11px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .days{font-family:var(--display);font-weight:800;font-size:19px;letter-spacing:-.02em;color:var(--accent)}
@@ -178,7 +179,7 @@ main > *{flex:0 0 auto}
 .date-in{font-size:12px;font-weight:600;color:var(--ink-2);background:none;border:0;padding:4px 0;min-width:104px;font-family:var(--body)}
 .date-in::-webkit-calendar-picker-indicator{opacity:.55;cursor:pointer}
 .date-in::-webkit-date-and-time-value{text-align:left}
-.dash{background:var(--card);border:1px dashed #C9C2B1;border-radius:var(--r);padding:22px;text-align:center;font-size:13px;color:var(--faint)}
+.dash{background:var(--card);border:1px dashed var(--edge);border-radius:var(--r);padding:22px;text-align:center;font-size:13px;color:var(--faint)}
 
 /* ---------- diary ---------- */
 .moods{display:flex;gap:8px}
@@ -412,6 +413,6 @@ canvas#fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-in
   <button class="save" data-act="hard-reset">Сбросить кэш и перезагрузить</button>
 </div>
 <div class="toast" id="toast"></div>
-<script src="app.js?v=18"></script>
+<script src="app.js?v=19"></script>
 </body>
 </html>

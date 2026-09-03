@@ -318,7 +318,7 @@ function renderNav() {
   if (!$nav.querySelector('button')) {
     $nav.innerHTML = TABS.map(t =>
       '<button data-act="tab" data-tab="' + t.key + '">' +
-        svg(t.icon, { size:21, color:'#9AA1AB', width:1.8 }) +
+        svg(t.icon, { size:21, color:'var(--faint)', width:1.8 }) +
         '<span>' + t.label + '</span><i class="ul"></i></button>').join('') +
       '<i class="nav-ul" aria-hidden="true"></i>';
   }
@@ -326,7 +326,7 @@ function renderNav() {
     const on = b.dataset.tab === S.tab;
     b.classList.toggle('on', on);
     b.setAttribute('aria-current', on ? 'page' : 'false');
-    b.querySelector('svg').setAttribute('stroke', on ? 'var(--accent)' : '#9AA1AB');
+    b.querySelector('svg').setAttribute('stroke', on ? 'var(--accent)' : 'var(--faint)');
   }
   moveNavUl();
 }
@@ -373,7 +373,7 @@ function ringSvg(pct, size, r, w, key) {
   if (key) RING[key] = pct;
   const off = v => (c * (1 - v)).toFixed(1);
   return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '" style="display:block">' +
-    '<circle cx="' + size/2 + '" cy="' + size/2 + '" r="' + r + '" fill="none" stroke="#EFECE3" stroke-width="' + w + '"/>' +
+    '<circle cx="' + size/2 + '" cy="' + size/2 + '" r="' + r + '" fill="none" stroke="var(--line-soft)" stroke-width="' + w + '"/>' +
     '<circle cx="' + size/2 + '" cy="' + size/2 + '" r="' + r + '" fill="none" stroke="#F26336" stroke-width="' + w +
     '" stroke-linecap="round" stroke-dasharray="' + c.toFixed(1) + '" stroke-dashoffset="' + off(from) +
     '" data-to="' + off(pct) + '" transform="rotate(-90 ' + size/2 + ' ' + size/2 + ')"/></svg>';
@@ -439,7 +439,7 @@ function viewCheck() {
         '</span></div><div class="chips">' +
       S.moments.map(m =>
         '<button class="chip' + (m.count ? ' on' : '') + '" data-act="moment" data-id="' + m.id + '">' +
-          (m.count ? '' : svg('plus', { size:13, color:'#9AA1AB', width:2 })) +
+          (m.count ? '' : svg('plus', { size:13, color:'var(--faint)', width:2 })) +
           '<span>' + esc(m.label) + '</span>' +
           (m.count ? '<span class="badge">×' + m.count + '</span>' : '') + '</button>').join('') +
       '</div></div>';
@@ -571,7 +571,7 @@ function viewWish() {
           '<span class="circ' + (w.done ? ' on' : '') + '">' + (w.done ? svg('tick', { size:13, color:'#fff', width:3 }) : '') +
           '</span></button></div>' +
       '<div class="wish-b">' + bottom +
-        '<span class="row" style="gap:7px;flex:none">' + svg('cal', { size:14, color:'#9AA1AB', width:1.5 }) +
+        '<span class="row" style="gap:7px;flex:none">' + svg('cal', { size:14, color:'var(--faint)', width:1.5 }) +
           '<span style="font-size:12px;font-weight:600;color:var(--ink-2)">' + (w.due ? fmtDate(w.due) : '—') + '</span>' +
         '</span></div></article>';
   }).join('') + '</div>';
@@ -972,7 +972,7 @@ function sheetWish() {
         '<input id="w-due" type="date" data-f="wish.due" value="' + esc(F.wish.due) + '"></div>' +
       '<div class="f"><label>Фото</label><div class="row" style="gap:12px">' + pic +
         '<button class="btn-ghost" data-act="pick-photo" data-target="draft">' +
-          svg('photo', { size:16, color:'#6B7280', width:1.5 }) + '<span>' + (F.wish.photo ? 'Заменить' : 'Выбрать фото') + '</span></button>' +
+          svg('photo', { size:16, color:'var(--muted)', width:1.5 }) + '<span>' + (F.wish.photo ? 'Заменить' : 'Выбрать фото') + '</span></button>' +
         (F.wish.photo ? '<button class="btn-ghost" data-act="drop-photo">Убрать</button>' : '') +
       '</div></div>' +
       formBtns('wish', 'add-wish', 'Добавить желание') + '</div>' +
@@ -1088,7 +1088,7 @@ function fitFx() {
   $fx.width = w; $fx.height = h;
 }
 fitFx();
-const FX_COLORS = ['#F26336','#F26336','#0B1E35','#FFD9CC','#E9E5DC','#F9A98A'];
+const FX_COLORS = ['#F26336','#F26336','#0B1E35','#FFD9CC','#E5DCC9','#F9A98A'];
 
 function burst(x, y, n = 26) {
   if (!fxc) return;
