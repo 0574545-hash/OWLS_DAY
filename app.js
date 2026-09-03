@@ -338,7 +338,14 @@ function moveNavUl() {
   ul.style.transform = 'translate(' + s.offsetLeft + 'px,' + s.offsetTop + 'px)';
   ul.classList.add('ready');
 }
-addEventListener('resize', moveNavUl);
+/* iOS выдаёт resize при сворачивании панели Safari — не считаем геометрию в кадре прокрутки */
+let reflowT = null;
+function onViewportChange() {
+  clearTimeout(reflowT);
+  reflowT = setTimeout(() => { moveNavUl(); fitFx(); }, 120);
+}
+addEventListener('resize', onViewportChange);
+addEventListener('orientationchange', onViewportChange);
 
 /** Подчёркивание между двумя вкладками: k = 0 у первой, 1 у второй. */
 function navUlAt(fromKey, toKey, k) {
@@ -627,7 +634,7 @@ function render(keepScroll, cascade) {
 }
 
 /* Списки выходят по одному: шаг 30 мс, весь экран собирается примерно за треть секунды. */
-const RISE_STEP = 30, RISE_MAX = 14;
+const RISE_STEP = 22, RISE_MAX = 8;
 function cascadeIn() {
   const rows = $screen.querySelectorAll('.card, .grp-h, .sec-h, .item, .chip, .entry, .streak, .dash');
   let n = 0;
@@ -662,14 +669,33 @@ function afterRender() {
 
 /* ---------- свайп между вкладками ---------- */
 /* Экран едет за пальцем; отпустили за четверть ширины — переходим на соседнюю вкладку. */
-const SW_LOCK = 10, SW_PART = 0.25, SW_FAST = 0.45, SW_MIN = 44;
-let swId = null, swX = 0, swY = 0, swT = 0, swDir = 0, swOn = false, swTo = null, swMoved = false;
+const SW_PART = 0.25, SW_FAST = 0.45, SW_MIN = 44;
+/* Горизонтальный жест требует явного перевеса, вертикальный выигрывает спор:
+   листание — движение частое, свайп — редкое. У боковых краёв не начинаем вовсе:
+   там хозяин системный жест «назад» Safari, и touch-action ему не помеха. */
+const SW_LOCK_X = 16, SW_LOCK_Y = 8, SW_RATIO = 2, SW_EDGE = 28;
+let swId = null, swX = 0, swY = 0, swT = 0, swDir = 0, swOn = false, swTo = null, swMoved = false, swTop = 0;
 
 const tabAt = n => (TABS[n] ? TABS[n].key : null);
 function neighbour(dx) {
   const i = TABS.findIndex(t => t.key === S.tab);
   return tabAt(dx < 0 ? i + 1 : i - 1);
 }
+/** Ждём переход именно этого элемента: transitionend всплывает от потомков. */
+function onceTransform(el, cb, fallbackMs) {
+  let done = false;
+  const fin = e => {
+    if (e && (e.target !== el || e.propertyName !== 'transform')) return;   // чужой переход — не наш
+    if (done) return;
+    done = true;
+    clearTimeout(t);
+    el.removeEventListener('transitionend', fin);
+    cb();
+  };
+  el.addEventListener('transitionend', fin);
+  const t = setTimeout(() => fin(null), fallbackMs);
+}
+
 function swReset() {
   $screen.classList.remove('swiping');
   $screen.style.transform = '';
@@ -680,9 +706,7 @@ function swCancel() {
   $screen.classList.add('sw-back');
   $screen.style.transform = '';
   navUlAt(S.tab, S.tab, 0);
-  const done = () => { $screen.classList.remove('sw-back'); swReset(); };
-  $screen.addEventListener('transitionend', done, { once: true });
-  setTimeout(done, 260);
+  onceTransform($screen, () => { $screen.classList.remove('sw-back'); swReset(); }, 300);
   swDropFlag();
   $screen.classList.remove('swiping');
   swOn = false;
@@ -691,22 +715,24 @@ function swCancel() {
 $screen.addEventListener('pointerdown', e => {
   if (sheetOpen || swId !== null || e.isPrimary === false) return;
   if (e.target.closest('textarea, input, select, .del')) return;
+  const w0 = $screen.clientWidth || 1;
+  if (e.clientX < SW_EDGE || e.clientX > w0 - SW_EDGE) return;     // край отдаём системе
   swId = e.pointerId; swX = e.clientX; swY = e.clientY; swT = performance.now();
   swDir = 0; swOn = false; swMoved = false; swTo = null;
+  swTop = $screen.scrollTop;
 });
 
 $screen.addEventListener('pointermove', e => {
   if (e.pointerId !== swId) return;
   const dx = e.clientX - swX, dy = e.clientY - swY;
   if (!swDir) {
-    if (Math.abs(dx) < SW_LOCK && Math.abs(dy) < SW_LOCK) return;
-    swDir = Math.abs(dx) > Math.abs(dy) * 1.2 ? 1 : -1;    // -1 — обычная вертикальная прокрутка
-    if (swDir === 1) {
-      swTo = neighbour(dx);
-      if (!swTo) { swDir = -1; return; }
-      swOn = true; swMoved = true;
-      $screen.classList.add('swiping');
-    }
+    if ($screen.scrollTop !== swTop || Math.abs(dy) > SW_LOCK_Y) { swDir = -1; return; }  // это листание
+    if (Math.abs(dx) < SW_LOCK_X || Math.abs(dx) < Math.abs(dy) * SW_RATIO) return;       // ещё не ясно
+    swDir = 1;
+    swTo = neighbour(dx);
+    if (!swTo) { swDir = -1; return; }
+    swOn = true; swMoved = true;
+    $screen.classList.add('swiping');
     return;
   }
   if (!swOn) return;
@@ -741,8 +767,7 @@ function swEnd(e) {
     S.tab = next; save();
     switchScreen(dir);
   };
-  $screen.addEventListener('transitionend', finish, { once: true });
-  setTimeout(finish, 220);
+  onceTransform($screen, finish, 260);
 }
 $screen.addEventListener('pointerup', swEnd);
 $screen.addEventListener('pointercancel', e => { if (e.pointerId === swId) swCancel(); });
@@ -982,7 +1007,7 @@ function closeSheet() {
   sheetOpen = false;
   $sheet.classList.remove('open');
   $sheet.setAttribute('aria-hidden', 'true');
-  render(false);
+  render(true);
 }
 
 /* ============================ фото ============================ */
@@ -1055,8 +1080,14 @@ function splash() {
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const $fx = document.getElementById('fx'), fxc = $fx ? $fx.getContext('2d') : null;
 let parts = [], fxRaf = null, dpr = 1;
-function fitFx() { if (!$fx) return; dpr = Math.min(2, devicePixelRatio || 1); $fx.width = innerWidth * dpr; $fx.height = innerHeight * dpr; }
-fitFx(); addEventListener('resize', fitFx);
+function fitFx() {
+  if (!$fx) return;
+  dpr = Math.min(2, devicePixelRatio || 1);
+  const w = Math.round(innerWidth * dpr), h = Math.round(innerHeight * dpr);
+  if ($fx.width === w && $fx.height === h) return;      // без изменений не переаллоцируем
+  $fx.width = w; $fx.height = h;
+}
+fitFx();
 const FX_COLORS = ['#F26336','#F26336','#0B1E35','#FFD9CC','#E9E5DC','#F9A98A'];
 
 function burst(x, y, n = 26) {
@@ -1098,7 +1129,12 @@ function buzz(pattern) { try { if (navigator.vibrate) navigator.vibrate(pattern)
 function animateOnce(el, cls) {
   if (!el) return;
   el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls);
-  el.addEventListener('animationend', () => el.classList.remove(cls), { once: true });
+  const off = e => {                                   // animationend тоже всплывает от потомков
+    if (e.target !== el) return;
+    el.classList.remove(cls);
+    el.removeEventListener('animationend', off);
+  };
+  el.addEventListener('animationend', off);
 }
 
 /** Всплеск из центра элемента. Вызывать ДО перерисовки — координаты берём с живого узла. */
@@ -1477,7 +1513,7 @@ const ACTIONS = {
 };
 
 /* удержание чипа «в моменте» (~0,6 с) сбрасывает его счётчик */
-const HOLD_MS = 600, HOLD_MOVE = 10;
+const HOLD_MS = 600, HOLD_MOVE = 6;
 let holdTimer = null, holdFired = false, holdX = 0, holdY = 0;
 function cancelHold() { clearTimeout(holdTimer); holdTimer = null; }
 document.addEventListener('pointerdown', e => {
@@ -1522,6 +1558,10 @@ document.addEventListener('pointermove', e => {
   if (delTimer && Math.hypot(e.clientX - delX, e.clientY - delY) > HOLD_MOVE) cancelDel();
 });
 document.addEventListener('pointerup', cancelDel);
+/* начали листать — оба удержания отпускаем, иначе заливка корзины идёт под пальцем */
+const onAnyScroll = () => { cancelHold(); cancelDel(); };
+$screen.addEventListener('scroll', onAnyScroll, { passive: true });
+$sheetBody.addEventListener('scroll', onAnyScroll, { passive: true });
 document.addEventListener('pointercancel', cancelDel);
 document.addEventListener('contextmenu', e => { if (e.target.closest('.del')) e.preventDefault(); });
 
