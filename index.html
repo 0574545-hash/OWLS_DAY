@@ -239,7 +239,7 @@ nav span{transition:color .2s ease}
 #splash{
   position:fixed;inset:0;z-index:100;background:var(--ink);
   transition:opacity .4s ease;
-  --n:3; --step:1s;
+  --n:3; --step:1.33s;              /* на каждую установку; при трёх заставка ≈ 5 с */
 }
 #splash.hide{opacity:0;pointer-events:none}
 .s-ph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:40px 28px;text-align:center}
@@ -431,6 +431,6 @@ canvas#fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-in
   <button class="save" data-act="hard-reset">Сбросить кэш и перезагрузить</button>
 </div>
 <div class="toast" id="toast"></div>
-<script src="app.js?v=20"></script>
+<script src="app.js?v=21"></script>
 </body>
 </html>

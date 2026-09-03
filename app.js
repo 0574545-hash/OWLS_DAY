@@ -1067,8 +1067,9 @@ function splash() {
   el.style.setProperty('--n', pick.length);
   el.hidden = false;
   el.classList.add('play');
-  /* 0,2 с подпись · по 1 с на установку · 0,25 с пауза · сова и название ≈ 0,7 с · всего 4 с при трёх */
-  const total = reducedMotion ? 1500 : 200 + pick.length * 1000 + 800;
+  /* 0,2 с подпись · по 1,33 с на установку · 0,25 с пауза · сова и название ≈ 0,7 с · всего 5 с при трёх.
+     Шаг должен совпадать с --step в CSS. */
+  const total = reducedMotion ? 1500 : 200 + pick.length * 1333 + 800;
   const hide = () => { el.classList.add('hide'); setTimeout(() => el.remove(), 450); };
   const t = setTimeout(hide, total);
   el.addEventListener('click', () => { clearTimeout(t); hide(); }, { once: true });
