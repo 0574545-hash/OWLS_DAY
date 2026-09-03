@@ -128,7 +128,12 @@ main > *{flex:0 0 auto}
 .item.is-done .txt{color:var(--faint);text-decoration:line-through}
 .time{font-size:11.5px;color:var(--faint);flex:none}
 .del{flex:none;width:32px;height:32px;display:grid;place-items:center;border-radius:8px;opacity:.45}
-.del:active{opacity:1;background:var(--bad-bg)}
+.del:active{opacity:1}
+.del{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:manipulation;position:relative;overflow:hidden}
+.del.holding{opacity:1;animation:holdfill 2s linear forwards}
+@keyframes holdfill{0%{background:transparent;transform:scale(1)}15%{transform:scale(1.12)}100%{background:var(--bad-bg);transform:scale(1.12)}}
+.del.holding::after{content:'';position:absolute;left:0;bottom:0;height:3px;width:0;background:var(--bad);animation:holdbar 2s linear forwards}
+@keyframes holdbar{to{width:100%}}
 
 /* ---------- stop ---------- */
 .pill{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border-radius:999px;padding:6px 11px;flex:none}
@@ -355,6 +360,6 @@ canvas#fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-in
   <button class="save" data-act="hard-reset">Сбросить кэш и перезагрузить</button>
 </div>
 <div class="toast" id="toast"></div>
-<script src="app.js?v=9"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>

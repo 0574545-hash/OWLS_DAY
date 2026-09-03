@@ -526,11 +526,11 @@ function viewDiary() {
       '</div></div>' +
     '<div class="card pad" style="display:flex;flex-direction:column;gap:16px">' +
       '<div class="fld"><label for="f-good">Что получилось</label>' +
-        '<textarea id="f-good" data-draft="good" rows="2" placeholder="Три строки хватит">' + esc(S.fields.good) + '</textarea></div>' +
+        '<textarea id="f-good" data-draft="good" maxlength="200" rows="2" placeholder="Три строки хватит">' + esc(S.fields.good) + '</textarea></div>' +
       '<div class="fld"><label for="f-hard">Что забрало силы</label>' +
-        '<textarea id="f-hard" data-draft="hard" rows="2" placeholder="Без оценок, просто факт">' + esc(S.fields.hard) + '</textarea></div>' +
+        '<textarea id="f-hard" data-draft="hard" maxlength="200" rows="2" placeholder="Без оценок, просто факт">' + esc(S.fields.hard) + '</textarea></div>' +
       '<div class="fld"><label for="f-thanks">Благодарность</label>' +
-        '<textarea id="f-thanks" data-draft="thanks" rows="2" placeholder="За что сегодня">' + esc(S.fields.thanks) + '</textarea></div>' +
+        '<textarea id="f-thanks" data-draft="thanks" maxlength="200" rows="2" placeholder="За что сегодня">' + esc(S.fields.thanks) + '</textarea></div>' +
       '<button class="save" data-act="save-entry">Сохранить запись</button></div>' +
     '<section class="card flush">' +
       '<div class="sec-h"><span class="sec-t">Прошлые записи</span></div>' +
@@ -591,7 +591,7 @@ function sheetCheck() {
   let h = '<div class="form">' +
     '<span class="sec-t">Новый пункт</span>' +
     '<div class="f"><label for="i-text">Название</label>' +
-      '<input id="i-text" type="text" data-f="item.text" value="' + esc(F.item.text) + '" placeholder="Например, прогулка 30 минут"></div>' +
+      '<input id="i-text" type="text" data-f="item.text" maxlength="200" value="' + esc(F.item.text) + '" placeholder="Например, прогулка 30 минут"></div>' +
     '<div class="f2">' +
       '<div class="f"><label for="i-time">Время</label>' +
         '<input id="i-time" type="time" data-f="item.time" value="' + esc(F.item.time) + '"></div>' +
@@ -621,7 +621,7 @@ function sheetCheck() {
   }
 
   h += '<div class="blk">В моменте</div>' +
-    '<div class="add"><input type="text" data-f="moment" value="' + esc(F.moment) +
+    '<div class="add"><input type="text" data-f="moment" maxlength="200" value="' + esc(F.moment) +
       '" placeholder="Отметка без времени" enterkeyhint="done">' +
       '<button class="plus" data-act="add-moment" aria-label="Добавить">' + svg('plus', { size:17, color:'#fff', width:2.2 }) +
       '</button></div>' +
@@ -634,7 +634,7 @@ function sheetStop() {
   return '<div class="form">' +
       '<span class="sec-t">Новый запрет</span>' +
       '<div class="f"><label for="s-text">Чего не делаю</label>' +
-        '<input id="s-text" type="text" data-f="stop" value="' + esc(F.stop) + '" placeholder="Например, телефон в кровати"></div>' +
+        '<input id="s-text" type="text" data-f="stop" maxlength="200" value="' + esc(F.stop) + '" placeholder="Например, телефон в кровати"></div>' +
       '<button class="btn-add" data-act="add-stop">Добавить запрет</button></div>' +
     (S.stops.length ? S.stops.map(x =>
       '<div class="mini"><span class="grow">' +
@@ -653,7 +653,7 @@ function sheetMeds() {
   let h = '<div class="form">' +
     '<span class="sec-t">Новое лекарство</span>' +
     '<div class="f"><label for="m-name">Название</label>' +
-      '<input id="m-name" type="text" data-f="med.name" value="' + esc(F.med.name) + '" placeholder="Например, магний"></div>' +
+      '<input id="m-name" type="text" data-f="med.name" maxlength="200" value="' + esc(F.med.name) + '" placeholder="Например, магний"></div>' +
     '<div class="f2">' +
       '<div class="f"><label>Форма</label>' + sel('form', forms, F.med.form) + '</div>' +
       '<div class="f"><label for="m-qty">Количество</label>' +
@@ -681,7 +681,7 @@ function sheetSet() {
   return '<div class="form">' +
       '<span class="sec-t">Новая установка</span>' +
       '<div class="f"><label for="t-text">Текст</label>' +
-        '<input id="t-text" type="text" data-f="set" value="' + esc(F.set) + '" placeholder="Например, я делаю меньше, но лучше"></div>' +
+        '<input id="t-text" type="text" data-f="set" maxlength="200" value="' + esc(F.set) + '" placeholder="Например, я делаю меньше, но лучше"></div>' +
       '<span class="note">Одна из установок показывается на заставке при запуске.</span>' +
       '<button class="btn-add" data-act="add-intent">Добавить установку</button></div>' +
     (S.intentions.length ? S.intentions.map(i =>
@@ -697,7 +697,7 @@ function sheetWish() {
   return '<div class="form">' +
       '<span class="sec-t">Новое желание</span>' +
       '<div class="f"><label for="w-text">Название</label>' +
-        '<input id="w-text" type="text" data-f="wish.text" value="' + esc(F.wish.text) + '" placeholder="Например, курс по керамике"></div>' +
+        '<input id="w-text" type="text" data-f="wish.text" maxlength="200" value="' + esc(F.wish.text) + '" placeholder="Например, курс по керамике"></div>' +
       '<div class="f"><label for="w-due">Дата</label>' +
         '<input id="w-due" type="date" data-f="wish.due" value="' + esc(F.wish.due) + '"></div>' +
       '<div class="f"><label>Фото</label><div class="row" style="gap:12px">' + pic +
@@ -1058,16 +1058,48 @@ document.addEventListener('pointerup', cancelHold);
 document.addEventListener('pointercancel', cancelHold);
 document.addEventListener('contextmenu', e => { if (e.target.closest('.chip')) e.preventDefault(); });
 
+/* удаление — только по удержанию 2 с, чтобы не снести пункт случайным касанием */
+const DEL_MS = 2000;
+let delTimer = null, delEl = null, delFired = false, delX = 0, delY = 0;
+function cancelDel() {
+  clearTimeout(delTimer); delTimer = null;
+  if (delEl) { delEl.classList.remove('holding'); delEl = null; }
+}
+document.addEventListener('pointerdown', e => {
+  const b = e.target.closest('.del[data-act^="del-"]');
+  if (!b) return;
+  cancelDel(); delFired = false; delEl = b; delX = e.clientX; delY = e.clientY;
+  b.classList.add('holding');
+  delTimer = setTimeout(() => {
+    delTimer = null; delFired = true; b.classList.remove('holding');
+    const fn = ACTIONS[b.dataset.act];
+    if (fn) { buzz([30]); fn(b); toast('Удалено'); }
+  }, DEL_MS);
+});
+document.addEventListener('pointermove', e => {
+  if (delTimer && Math.hypot(e.clientX - delX, e.clientY - delY) > HOLD_MOVE) cancelDel();
+});
+document.addEventListener('pointerup', cancelDel);
+document.addEventListener('pointercancel', cancelDel);
+document.addEventListener('contextmenu', e => { if (e.target.closest('.del')) e.preventDefault(); });
+
 /* делегирование: один слушатель на всё приложение */
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]');
   if (!el) return;
+  if (el.matches('.del[data-act^="del-"]')) {          // клик по корзине сам по себе ничего не удаляет
+    e.preventDefault();
+    if (delFired) delFired = false; else toast('Удерживайте 2 секунды, чтобы удалить');
+    return;
+  }
   const fn = ACTIONS[el.dataset.act];
   if (fn) { e.preventDefault(); fn(el); }
 });
 
 /* поля: пишем в черновик без перерисовки, чтобы не терять фокус */
+const MAX_LEN = 200;
 function setField(path, value) {
+  if (typeof value === 'string') value = value.slice(0, MAX_LEN);
   const [a, b] = path.split('.');
   if (b) F[a][b] = value; else F[a] = value;
 }
@@ -1075,7 +1107,7 @@ function setField(path, value) {
 document.addEventListener('input', e => {
   const el = e.target;
   if (el.dataset.f) { setField(el.dataset.f, el.value); return; }
-  if (el.dataset.draft) { S.fields[el.dataset.draft] = el.value; save(); }
+  if (el.dataset.draft) { S.fields[el.dataset.draft] = el.value.slice(0, MAX_LEN); save(); }
 });
 
 /* change ловит то, что не даёт input: выбор в списке и подтверждение даты/времени */
