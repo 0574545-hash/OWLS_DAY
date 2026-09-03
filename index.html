@@ -65,8 +65,9 @@ input:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px soli
 .eyebrow{font-family:var(--display);font-weight:400;font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
 .h1{font-family:var(--display);font-weight:800;font-size:clamp(21px,6.4vw,26px);line-height:1.05;letter-spacing:-.02em}
 .hd-date{font-size:12.5px;color:var(--muted)}
-.hd-mark{width:52px;height:52px;border-radius:999px;background:#fff;border:1px solid var(--line);display:grid;place-items:center;flex:none}
-.hd-mark img{width:36px;height:36px;object-fit:contain}
+.hd-mark{width:52px;height:52px;border-radius:999px;border:1px solid var(--line);flex:none;padding:0;appearance:none;-webkit-appearance:none;
+  background:#fff url(assets/owl-mark.png?v=2) center center / 36px 36px no-repeat}
+.hd-mark:active{background-color:var(--line-soft)}
 
 /* ---------- scroll area ---------- */
 main{
@@ -363,7 +364,7 @@ canvas#fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-in
       <span class="h1" id="title">День по частям</span>
       <span class="hd-date" id="today"></span>
     </div>
-    <button class="hd-mark" data-act="settings" aria-label="Настройки"><img src="assets/owl-mark.png?v=2" alt="OWLS"></button>
+    <button class="hd-mark" data-act="settings" aria-label="Настройки"></button>
   </header>
   <main id="screen"></main>
   <nav id="nav"></nav>
@@ -395,6 +396,6 @@ canvas#fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-in
   <button class="save" data-act="hard-reset">Сбросить кэш и перезагрузить</button>
 </div>
 <div class="toast" id="toast"></div>
-<script src="app.js?v=14"></script>
+<script src="app.js?v=15"></script>
 </body>
 </html>
