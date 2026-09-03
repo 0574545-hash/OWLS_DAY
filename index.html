@@ -102,7 +102,8 @@ main > *{flex:0 0 auto}
 .ring{position:relative;width:78px;height:78px;flex:none}
 .ring .pct{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--display);font-weight:800;font-size:17px;letter-spacing:-.02em}
 .ring circle{transition:stroke-dashoffset .55s cubic-bezier(.4,0,.2,1)}
-.ring .pct{font-variant-numeric:tabular-nums}
+.ring .pct{font-variant-numeric:tabular-nums;padding:0 2px}
+.ring .pct.w3{font-size:13.5px;letter-spacing:-.04em}
 .ring-card{transition:transform .2s ease}
 .done-line{font-family:var(--display);font-weight:700;font-size:15px}
 .streak{background:var(--ink);border-radius:var(--r);padding:16px 18px;display:flex;align-items:center;justify-content:space-between;gap:14px}
@@ -394,6 +395,6 @@ canvas#fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-in
   <button class="save" data-act="hard-reset">Сбросить кэш и перезагрузить</button>
 </div>
 <div class="toast" id="toast"></div>
-<script src="app.js?v=13"></script>
+<script src="app.js?v=14"></script>
 </body>
 </html>

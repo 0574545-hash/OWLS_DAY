@@ -365,9 +365,11 @@ function ringSvg(pct, size, r, w, key) {
 function ringCard(key, done, total, countText, hint) {
   const pct = total ? done / total : 0;
   const shown = numKey(key);
+  const to = Math.round(pct * 100);
+  const wide = to === 100 || shown === 100 ? ' w3' : '';   // «100%» не помещается в кольцо крупным кеглем
   return '<div class="card ring-card">' +
     '<div class="ring">' + ringSvg(pct, 78, 31, 8, key) +
-      '<div class="pct" data-from="' + shown + '" data-to="' + Math.round(pct * 100) + '">' + shown + '%</div></div>' +
+      '<div class="pct' + wide + '" data-from="' + shown + '" data-to="' + to + '">' + shown + '%</div></div>' +
     '<div class="grow" style="display:flex;flex-direction:column;gap:6px">' +
       '<span class="done-line">' + esc(countText) + '</span>' +
       '<span class="hint">' + hint + '</span>' +
@@ -630,12 +632,13 @@ function afterRender() {
   const from = Number(pctEl.dataset.from) || 0, to = Number(pctEl.dataset.to) || 0;
   NUMS[S.tab] = to;
   cancelAnimationFrame(numRaf);
-  if (reducedMotion || from === to || document.visibilityState !== 'visible') { pctEl.textContent = to + '%'; return; }
+  const put = v => { pctEl.textContent = v + '%'; pctEl.classList.toggle('w3', v >= 100); };
+  if (reducedMotion || from === to || document.visibilityState !== 'visible') { put(to); return; }
   const t0 = performance.now(), dur = 500;
   const ease = k => 1 - Math.pow(1 - k, 3);
   const step = now => {
     const k = Math.min(1, (now - t0) / dur);
-    pctEl.textContent = Math.round(from + (to - from) * ease(k)) + '%';
+    put(Math.round(from + (to - from) * ease(k)));
     if (k < 1) numRaf = requestAnimationFrame(step);
   };
   numRaf = requestAnimationFrame(step);
