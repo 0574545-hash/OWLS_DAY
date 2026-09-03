@@ -59,6 +59,7 @@ const MED_MEAL = { before:'до еды', with:'во время еды', after:'�
 const MED_EVERY = { 1:'Ежедневно', 2:'Через день', 3:'Раз в 3 дня', 7:'Раз в неделю' };
 /** Приём сегодня? Отсчёт от дня добавления: каждые N дней. */
 function medToday(m) {
+  if (m.hidden) return false;
   const every = Number(m.every) || 1;
   if (every === 1) return true;
   const diff = Math.round((parseKey(dayKeyOf(new Date())) - parseKey(m.start || dayKeyOf(new Date()))) / 86400000);
@@ -133,7 +134,9 @@ function modeFromDays(days) {
 }
 
 /** Показывать ли пункт сегодня. */
-const onToday = i => (i.days || EVERYDAY).includes(new Date().getDay());
+const onToday = i => !i.hidden && (i.days || EVERYDAY).includes(new Date().getDay());
+/** Только не скрытые. */
+const vis = list => list.filter(x => !x.hidden);
 
 /* ============================ иконки ============================ */
 
@@ -150,6 +153,8 @@ const ICON = {
   tick:'<path d="M4 12.5 9.5 18 20 6.5"/>',
   cal:'<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8.5 3v4M15.5 3v4"/>',
   trash:'<path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/>',
+  eye:'<path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="3"/>',
+  eyeoff:'<path d="M3 3l18 18M10.6 5.3A10 10 0 0 1 12 5.2c6 0 9.5 6.8 9.5 6.8a15 15 0 0 1-3.2 3.9M6.6 6.6C4 8.4 2.5 12 2.5 12s3.5 6.8 9.5 6.8c1.6 0 3-.4 4.2-1M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
   pill:'<rect x="3" y="8.5" width="18" height="7" rx="3.5" transform="rotate(-45 12 12)"/><path d="m9.2 9.2 5.6 5.6"/>',
   photo:'<rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="10.5" r="1.8"/><path d="m4.5 17 4.8-4.2 3.4 3 2.6-2.2 4.2 3.4"/>',
 };
@@ -158,6 +163,11 @@ function svg(name, o = {}) {
   return '<svg width="' + s + '" height="' + s + '" viewBox="0 0 24 24" fill="none" stroke="' + c +
     '" stroke-width="' + w + '" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICON[name] + '</svg>';
 }
+/** Кнопка «скрыть/показать» в строке настроек. */
+const eyeBtn = (kind, id, hidden, extra = '') =>
+  '<button class="eye' + (hidden ? ' on' : '') + '" data-act="hide-' + kind + '" data-id="' + id + '" ' + extra +
+  ' aria-label="' + (hidden ? 'Показать' : 'Скрыть') + '">' +
+  svg(hidden ? 'eyeoff' : 'eye', { size:16, color: hidden ? 'var(--accent)' : 'var(--faint)', width:1.6 }) + '</button>';
 const trashBtn = (act, attrs, label) =>
   '<button class="del" data-act="' + act + '" ' + attrs + ' aria-label="' + label + '">' +
   svg('trash', { size:15, color:'#B43232', width:1.5 }) + '</button>';
@@ -432,8 +442,9 @@ function viewCheck() {
       '<div class="week">' + week + '</div></div>';
   }
 
-  if (S.moments.length) {
-    const marks = S.moments.reduce((a, m) => a + m.count, 0);
+  const moments = vis(S.moments);
+  if (moments.length) {
+    const marks = moments.reduce((a, m) => a + m.count, 0);
     h += '<div class="card" style="padding:16px 16px 14px;display:flex;flex-direction:column;gap:12px">' +
       '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">' +
         '<div class="grow" style="display:flex;flex-direction:column;gap:4px">' +
@@ -441,7 +452,7 @@ function viewCheck() {
         '<span style="font-size:11.5px;color:var(--faint);flex:none">' +
           (marks ? 'Сегодня ' + marks + ' ' + plural(marks, 'отметка', 'отметки', 'отметок') : 'Пока без отметок') +
         '</span></div><div class="chips">' +
-      S.moments.map(m =>
+      moments.map(m =>
         '<button class="chip' + (m.count ? ' on' : '') + '" data-act="moment" data-id="' + m.id + '">' +
           (m.count ? '' : svg('plus', { size:13, color:'var(--faint)', width:2 })) +
           '<span>' + esc(m.label) + '</span>' +
@@ -468,24 +479,25 @@ function viewCheck() {
       '</section>';
   }
 
-  if (!total && !S.moments.length) h += emptyHint('Чек-лист пуст.');
+  if (!total && !moments.length) h += emptyHint('Чек-лист пуст.');
   return h;
 }
 
 /* ---------- экран: стоп-лист ---------- */
 function viewStop() {
-  if (!S.stops.length) return emptyHint('Стоп-лист пуст.');
-  const holding = S.stops.filter(x => !x.slipped).length;
-  const best = S.stops.filter(x => !x.slipped).reduce((a, x) => Math.max(a, x.clean), 0);
-  return ringCard('stop', holding, S.stops.length,
-      holding + ' из ' + S.stops.length + ' держатся',
-      S.stops.some(x => x.slipped) ? 'Один срыв не отменяет день. Отмечайте честно.'
+  const stops = vis(S.stops);
+  if (!stops.length) return emptyHint('Стоп-лист пуст.');
+  const holding = stops.filter(x => !x.slipped).length;
+  const best = stops.filter(x => !x.slipped).reduce((a, x) => Math.max(a, x.clean), 0);
+  return ringCard('stop', holding, stops.length,
+      holding + ' из ' + stops.length + ' держатся',
+      stops.some(x => x.slipped) ? 'Один срыв не отменяет день. Отмечайте честно.'
         : best ? 'Ни одного срыва сегодня. Лучшая серия — ' + best + ' ' + plural(best, 'день', 'дня', 'дней') + '.'
         : 'Ни одного срыва сегодня. Так и держите.') +
     '<section class="card flush">' +
       '<div class="sec-h"><span class="sec-t">Чего не делаю</span>' +
       '<span class="sec-s">Нажмите, если сорвались — серия обнулится</span></div>' +
-      S.stops.map(x =>
+      stops.map(x =>
         '<button class="item" data-act="stop" data-id="' + x.id + '" style="min-height:60px;padding:12px 16px;align-items:flex-start">' +
           '<span class="grow" style="display:flex;flex-direction:column;gap:5px">' +
             '<span style="font-size:14px;font-weight:600;line-height:1.35">' + esc(x.text) + '</span>' +
@@ -498,7 +510,7 @@ function viewStop() {
 
 /* ---------- экран: лекарства ---------- */
 function viewMeds() {
-  if (!S.meds.length) return emptyHint('Лекарств пока нет.');
+  if (!vis(S.meds).length) return emptyHint('Лекарств пока нет.');
   const today = S.meds.filter(medToday);
   if (!today.length) {
     const soon = S.meds.map(m => ({ m, d: medNextIn(m) })).sort((a, b) => a.d - b.d)[0];
@@ -534,21 +546,22 @@ function viewMeds() {
 
 /* ---------- экран: желания ---------- */
 function viewWish() {
-  if (!S.wishes.length) return emptyHint('Список желаний пуст.');
-  const doneN = S.wishes.filter(w => w.done).length;
-  const pct = doneN / S.wishes.length;
-  const up = S.wishes.filter(w => !w.done && w.due)
+  const wishes = vis(S.wishes);
+  if (!wishes.length) return emptyHint('Список желаний пуст.');
+  const doneN = wishes.filter(w => w.done).length;
+  const pct = doneN / wishes.length;
+  const up = wishes.filter(w => !w.done && w.due)
     .map(w => ({ w, d: daysLeft(w.due) })).filter(x => x.d >= 0)
     .sort((a, b) => a.d - b.d)[0];
   const nearest = up
     ? 'Ближайшее — ' + up.w.text.toLowerCase() + ', ' + up.d + ' ' + plural(up.d, 'день', 'дня', 'дней')
     : 'Ближайших дат нет';
 
-  let h = ringCard('wish', doneN, S.wishes.length,
-    doneN + ' из ' + S.wishes.length + ' ' + plural(S.wishes.length, 'исполнено', 'исполнено', 'исполнено'),
+  let h = ringCard('wish', doneN, wishes.length,
+    doneN + ' из ' + wishes.length + ' ' + plural(wishes.length, 'исполнено', 'исполнено', 'исполнено'),
     esc(nearest));
 
-  h += '<div style="display:flex;flex-direction:column;gap:10px">' + S.wishes.map(w => {
+  h += '<div style="display:flex;flex-direction:column;gap:10px">' + wishes.map(w => {
     const left = w.due ? daysLeft(w.due) : null;
     const abs = left === null ? 0 : Math.abs(left);
     let bottom;
@@ -871,11 +884,12 @@ function sheetCheck() {
     const list = S.items[p.key];
     if (!list.length) continue;
     h += '<div class="blk">' + p.name + '</div>' + list.map(i =>
-      '<div class="' + rowCls('item', i.id) + '" data-act="edit-item" data-phase="' + p.key + '" data-id="' + i.id + '">' +
+      '<div class="' + rowCls('item', i.id) + (i.hidden ? ' off' : '') + '" data-act="edit-item" data-phase="' + p.key + '" data-id="' + i.id + '">' +
         '<span class="grow">' +
         '<div class="m-t">' + esc(i.text) + '</div>' +
-        '<div class="m-s">' + (i.time ? esc(i.time) + ' · ' : '') + repeatLabel(i.days) + '</div></span>' +
+        '<div class="m-s">' + (i.time ? esc(i.time) + ' · ' : '') + repeatLabel(i.days) + (i.hidden ? ' · скрыто' : '') + '</div></span>' +
         (editing('item') && E.id === i.id ? '<span class="m-e">правка</span>' : '') +
+        eyeBtn('item', i.id, i.hidden, 'data-phase="' + p.key + '"') +
         trashBtn('del-item', 'data-phase="' + p.key + '" data-id="' + i.id + '"', 'Удалить пункт') + '</div>').join('');
   }
 
@@ -889,9 +903,10 @@ function sheetCheck() {
           '" placeholder="Отметка без времени" enterkeyhint="done">' +
           '<button class="plus" data-act="add-moment" aria-label="Добавить">' + svg('plus', { size:17, color:'#fff', width:2.2 }) +
           '</button></div>') +
-    S.moments.map(m => '<div class="' + rowCls('moment', m.id) + '" data-act="edit-moment" data-id="' + m.id + '">' +
-      '<span class="grow m-t">' + esc(m.label) + '</span>' +
+    S.moments.map(m => '<div class="' + rowCls('moment', m.id) + (m.hidden ? ' off' : '') + '" data-act="edit-moment" data-id="' + m.id + '">' +
+      '<span class="grow"><div class="m-t">' + esc(m.label) + '</div>' + (m.hidden ? '<div class="m-s">скрыто</div>' : '') + '</span>' +
       (editing('moment') && E.id === m.id ? '<span class="m-e">правка</span>' : '') +
+      eyeBtn('moment', m.id, m.hidden) +
       trashBtn('del-moment', 'data-id="' + m.id + '"', 'Удалить отметку') + '</div>').join('');
   return h;
 }
@@ -903,10 +918,11 @@ function sheetStop() {
         '<input id="s-text" type="text" data-f="stop" maxlength="200" value="' + esc(F.stop) + '" placeholder="Например, телефон в кровати"></div>' +
       formBtns('stop', 'add-stop', 'Добавить запрет') + '</div>' +
     (S.stops.length ? S.stops.map(x =>
-      '<div class="' + rowCls('stop', x.id) + '" data-act="edit-stop" data-id="' + x.id + '"><span class="grow">' +
+      '<div class="' + rowCls('stop', x.id) + (x.hidden ? ' off' : '') + '" data-act="edit-stop" data-id="' + x.id + '"><span class="grow">' +
         '<div class="m-t">' + esc(x.text) + '</div>' +
-        '<div class="m-s">' + (x.slipped ? 'Сорвался сегодня' : 'Чисто ' + x.clean + ' ' + plural(x.clean, 'день', 'дня', 'дней')) + '</div>' +
+        '<div class="m-s">' + (x.slipped ? 'Сорвался сегодня' : 'Чисто ' + x.clean + ' ' + plural(x.clean, 'день', 'дня', 'дней')) + (x.hidden ? ' · скрыто' : '') + '</div>' +
       '</span>' + (editing('stop') && E.id === x.id ? '<span class="m-e">правка</span>' : '') +
+      eyeBtn('stop', x.id, x.hidden) +
       trashBtn('del-stop', 'data-id="' + x.id + '"', 'Удалить запрет') + '</div>').join('')
       : '<div class="empty">Пока пусто.</div>');
 }
@@ -939,10 +955,11 @@ function sheetMeds() {
     const list = S.meds.filter(m => m.phase === p.key);
     if (!list.length) continue;
     h += '<div class="blk">' + p.name + '</div>' + list.map(m =>
-      '<div class="' + rowCls('med', m.id) + '" data-act="edit-med" data-id="' + m.id + '"><span class="grow">' +
+      '<div class="' + rowCls('med', m.id) + (m.hidden ? ' off' : '') + '" data-act="edit-med" data-id="' + m.id + '"><span class="grow">' +
         '<div class="m-t">' + esc(m.name) + '</div>' +
-        '<div class="m-s">' + esc(medLineFull(m)) + (medToday(m) ? '' : ' · следующий через ' + medNextIn(m) + ' ' + plural(medNextIn(m), 'день', 'дня', 'дней')) + '</div></span>' +
+        '<div class="m-s">' + esc(medLineFull(m)) + (m.hidden ? ' · скрыто' : medToday(m) ? '' : ' · следующий через ' + medNextIn(m) + ' ' + plural(medNextIn(m), 'день', 'дня', 'дней')) + '</div></span>' +
         (editing('med') && E.id === m.id ? '<span class="m-e">правка</span>' : '') +
+        eyeBtn('med', m.id, m.hidden) +
         trashBtn('del-med', 'data-id="' + m.id + '"', 'Удалить лекарство') + '</div>').join('');
   }
   if (!S.meds.length) h += '<div class="empty">Пока пусто.</div>';
@@ -957,9 +974,10 @@ function sheetSet() {
       '<span class="note">Одна из установок показывается на заставке при запуске.</span>' +
       formBtns('intent', 'add-intent', 'Добавить установку') + '</div>' +
     (S.intentions.length ? S.intentions.map(i =>
-      '<div class="' + rowCls('intent', i.id) + '" data-act="edit-intent" data-id="' + i.id + '">' +
-      '<span class="grow m-t">' + esc(i.text) + '</span>' +
+      '<div class="' + rowCls('intent', i.id) + (i.hidden ? ' off' : '') + '" data-act="edit-intent" data-id="' + i.id + '">' +
+      '<span class="grow"><div class="m-t">' + esc(i.text) + '</div>' + (i.hidden ? '<div class="m-s">скрыто, на заставке не показывается</div>' : '') + '</span>' +
       (editing('intent') && E.id === i.id ? '<span class="m-e">правка</span>' : '') +
+      eyeBtn('intent', i.id, i.hidden) +
       trashBtn('del-intent', 'data-id="' + i.id + '"', 'Удалить установку') + '</div>').join('')
       : '<div class="empty">Пока пусто.</div>');
 }
@@ -982,11 +1000,12 @@ function sheetWish() {
       formBtns('wish', 'add-wish', 'Добавить желание') + '</div>' +
     (S.wishes.length ? S.wishes.map(w => {
       const t = w.photo ? '<img class="thumb" src="' + w.photo + '" alt="">' : '<span class="thumb ph-empty">Нет<br>фото</span>';
-      return '<div class="' + rowCls('wish', w.id) + '" data-act="edit-wish" data-id="' + w.id + '">' + t +
+      return '<div class="' + rowCls('wish', w.id) + (w.hidden ? ' off' : '') + '" data-act="edit-wish" data-id="' + w.id + '">' + t +
         '<span class="grow">' +
         '<div class="m-t">' + esc(w.text) + '</div>' +
-        '<div class="m-s">' + (w.due ? 'до ' + fmtDate(w.due) : 'без даты') + (w.done ? ' · исполнено' : '') + '</div></span>' +
+        '<div class="m-s">' + (w.due ? 'до ' + fmtDate(w.due) : 'без даты') + (w.done ? ' · исполнено' : '') + (w.hidden ? ' · скрыто' : '') + '</div></span>' +
         (editing('wish') && E.id === w.id ? '<span class="m-e">правка</span>' : '') +
+        eyeBtn('wish', w.id, w.hidden) +
         trashBtn('del-wish', 'data-id="' + w.id + '"', 'Удалить желание') + '</div>';
     }).join('') : '<div class="empty">Пока пусто.</div>');
 }
@@ -1064,7 +1083,7 @@ function splash() {
   const el = document.getElementById('splash');
   if (!el) return;
   /* до трёх случайных установок без повторов; меньше трёх — сколько есть */
-  const pool = S.intentions.slice(), pick = [];
+  const pool = vis(S.intentions), pick = [];
   while (pick.length < 3 && pool.length) pick.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
   if (!pick.length) { el.remove(); return; }
   document.getElementById('splash-lines').innerHTML = pick.map(i => '<span class="s-ln">' + esc(i.text) + '</span>').join('');
@@ -1173,6 +1192,13 @@ function toast(msg) {
   toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
 }
 
+function hideToggle(list, id) {
+  const x = (list || []).find(y => y.id === id);
+  if (!x) return;
+  x.hidden = !x.hidden;
+  commitSheet();
+  toast(x.hidden ? 'Скрыто: в списке есть, на экране нет' : 'Снова показывается');
+}
 function commit(keepScroll = true) { S.edits = (S.edits || 0) + 1; save(); render(keepScroll); }
 function commitSheet() { S.edits = (S.edits || 0) + 1; save(); renderSheet(); }
 
@@ -1519,6 +1545,14 @@ const ACTIONS = {
     catch (e) { toast('Не удалось собрать файл: ' + (e && e.message || e)); }
   },
   'xl-import'() { $xlsx.click(); },
+
+  /* скрыть/показать: остаётся в списке, но не на экране и не в счёте */
+  'hide-item'(el) { hideToggle(S.items[el.dataset.phase], el.dataset.id); },
+  'hide-moment'(el) { hideToggle(S.moments, el.dataset.id); },
+  'hide-stop'(el) { hideToggle(S.stops, el.dataset.id); },
+  'hide-med'(el) { hideToggle(S.meds, el.dataset.id); },
+  'hide-intent'(el) { hideToggle(S.intentions, el.dataset.id); },
+  'hide-wish'(el) { hideToggle(S.wishes, el.dataset.id); },
 
   /* копия данных */
   async 'bk-save'() {
@@ -2002,7 +2036,7 @@ function xlImport(book) {
       const time = cellTime(r[2]);
       const phase = (PHASES.find(p => norm(p.name) === norm(r[0])) || { key: phaseOfTime(time) }).key;
       const old = pickOld(pool, r[1], 'text');
-      items[phase].push({ id: old ? old.id : uid(phase), text: cellStr(r[1]), time, days: cellDays(r[3]), done: old ? !!old.done : false });
+      items[phase].push({ id: old ? old.id : uid(phase), text: cellStr(r[1]), time, days: cellDays(r[3]), done: old ? !!old.done : false, hidden: old ? !!old.hidden : false });
     }
     for (const p of PHASES) items[p.key].sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
     S.items = items;
@@ -2010,7 +2044,7 @@ function xlImport(book) {
   }
   if ((t = xlTable(book, 'moment'))) {
     const pool = S.moments;
-    S.moments = t.map(r => { const old = pickOld(pool, r[0], 'label'); return { id: old ? old.id : uid('q'), label: cellStr(r[0]), count: old ? old.count : 0 }; });
+    S.moments = t.map(r => { const old = pickOld(pool, r[0], 'label'); return { id: old ? old.id : uid('q'), label: cellStr(r[0]), count: old ? old.count : 0, hidden: old ? !!old.hidden : false }; });
     done.push('в моменте ' + t.length);
   }
   if ((t = xlTable(book, 'stop'))) {
@@ -2018,7 +2052,7 @@ function xlImport(book) {
     S.stops = t.map(r => {
       const old = pickOld(pool, r[0], 'text');
       const n = typeof r[1] === 'number' ? Math.max(0, Math.round(r[1])) : (cellStr(r[1]) ? Number(cellStr(r[1])) : NaN);
-      return { id: old ? old.id : uid('s'), text: cellStr(r[0]), clean: Number.isFinite(n) ? n : (old ? old.clean : 0), slipped: old ? !!old.slipped : false };
+      return { id: old ? old.id : uid('s'), text: cellStr(r[0]), clean: Number.isFinite(n) ? n : (old ? old.clean : 0), slipped: old ? !!old.slipped : false, hidden: old ? !!old.hidden : false };
     });
     done.push('стоп-лист ' + t.length);
   }
@@ -2028,7 +2062,7 @@ function xlImport(book) {
       const old = pickOld(pool, r[0], 'name');
       const every = Number(keyOf(MED_EVERY, r[5]) || cellStr(r[5]).match(/\d+/)?.[0] || (old ? old.every : 1)) || 1;
       return {
-        id: old ? old.id : uid('r'), name: cellStr(r[0]),
+        id: old ? old.id : uid('r'), name: cellStr(r[0]), hidden: old ? !!old.hidden : false,
         form: keyOf(MED_FORMS, r[1]) || (old ? old.form : 'tab'),
         qty: Math.min(99, Math.max(1, Math.round(Number(r[2]) || (old ? old.qty : 1)))),
         phase: (PHASES.find(p => norm(p.name) === norm(r[3])) || { key: old ? old.phase : 'morning' }).key,
@@ -2040,7 +2074,7 @@ function xlImport(book) {
   }
   if ((t = xlTable(book, 'set'))) {
     const pool = S.intentions;
-    S.intentions = t.map(r => { const old = pickOld(pool, r[0], 'text'); return { id: old ? old.id : uid('i'), text: cellStr(r[0]) }; });
+    S.intentions = t.map(r => { const old = pickOld(pool, r[0], 'text'); return { id: old ? old.id : uid('i'), text: cellStr(r[0]), hidden: old ? !!old.hidden : false }; });
     done.push('установки ' + t.length);
   }
   if ((t = xlTable(book, 'wish'))) {
@@ -2049,7 +2083,7 @@ function xlImport(book) {
       const old = pickOld(pool, r[0], 'text');
       const isDone = cellYes(r[4]);
       return { id: old ? old.id : uid('w'), text: cellStr(r[0]), cat: cellStr(r[1]), note: cellStr(r[2]), due: cellDay(r[3]),
-        done: isDone, doneAt: isDone ? (old && old.doneAt) || today : undefined, photo: old ? old.photo || '' : '' };
+        done: isDone, doneAt: isDone ? (old && old.doneAt) || today : undefined, photo: old ? old.photo || '' : '', hidden: old ? !!old.hidden : false };
     });
     done.push('желания ' + t.length);
   }

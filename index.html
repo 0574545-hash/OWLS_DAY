@@ -340,6 +340,11 @@ nav span{transition:color .2s ease}
 .mini[data-act]{cursor:pointer;-webkit-tap-highlight-color:transparent}
 .mini[data-act]:active{background:var(--line-soft)}
 .mini.editing{background:var(--accent-soft);border-bottom-color:var(--accent)}
+.mini.off .m-t,.mini.off .thumb{opacity:.45}
+.mini.off .m-s{color:var(--faint)}
+.eye{flex:none;width:32px;height:32px;display:grid;place-items:center;border-radius:8px;-webkit-tap-highlight-color:transparent}
+.eye:active{background:var(--line-soft)}
+.eye.on{background:var(--accent-soft)}
 .mini .m-e{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--accent);flex:none}
 .btn-row{display:flex;gap:10px}
 .btn-row > *{flex:1;min-width:0}
@@ -436,6 +441,6 @@ canvas#fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-in
   <button class="save" data-act="hard-reset">Сбросить кэш и перезагрузить</button>
 </div>
 <div class="toast" id="toast"></div>
-<script src="app.js?v=23"></script>
+<script src="app.js?v=24"></script>
 </body>
 </html>
