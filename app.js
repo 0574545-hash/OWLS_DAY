@@ -330,23 +330,51 @@ function moveNavUl() {
 }
 addEventListener('resize', moveNavUl);
 
+/** Подчёркивание между двумя вкладками: k = 0 у первой, 1 у второй. */
+function navUlAt(fromKey, toKey, k) {
+  const ul = $nav.querySelector('.nav-ul');
+  const a = $nav.querySelector('[data-tab="' + fromKey + '"] .ul');
+  const b = $nav.querySelector('[data-tab="' + toKey + '"] .ul');
+  if (!ul || !a || !b) return;
+  ul.style.transform = 'translate(' + (a.offsetLeft + (b.offsetLeft - a.offsetLeft) * k) + 'px,' + a.offsetTop + 'px)';
+}
+
 /** Новый экран въезжает со стороны нажатой вкладки; шапка чуть поднимается. */
 function switchScreen(dir) {
-  render(false);
+  render(false, true);
   if (reducedMotion) return;
   $screen.classList.remove('go-l', 'go-r');   // быстрые нажатия подряд: старый класс не должен остаться
   animateOnce($screen, 'go-' + dir);
   animateOnce(document.querySelector('.hd-t'), 'go');
 }
 
-function ringSvg(pct, size, r, w) {
+/* Кольцо помнит прошлое значение вкладки: рисуем со старого, afterRender доводит до нового. */
+const RING = {};
+function ringSvg(pct, size, r, w, key) {
   const c = 2 * Math.PI * r;
+  const from = key && RING[key] !== undefined ? RING[key] : pct;
+  if (key) RING[key] = pct;
+  const off = v => (c * (1 - v)).toFixed(1);
   return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '" style="display:block">' +
     '<circle cx="' + size/2 + '" cy="' + size/2 + '" r="' + r + '" fill="none" stroke="#EFECE3" stroke-width="' + w + '"/>' +
     '<circle cx="' + size/2 + '" cy="' + size/2 + '" r="' + r + '" fill="none" stroke="#F26336" stroke-width="' + w +
-    '" stroke-linecap="round" stroke-dasharray="' + c.toFixed(1) + '" stroke-dashoffset="' + (c * (1 - pct)).toFixed(1) +
-    '" transform="rotate(-90 ' + size/2 + ' ' + size/2 + ')"/></svg>';
+    '" stroke-linecap="round" stroke-dasharray="' + c.toFixed(1) + '" stroke-dashoffset="' + off(from) +
+    '" data-to="' + off(pct) + '" transform="rotate(-90 ' + size/2 + ' ' + size/2 + ')"/></svg>';
 }
+/** Шапка экрана: кольцо с процентом, счёт и подсказка «дальше». Одинаковая на всех вкладках. */
+function ringCard(key, done, total, countText, hint) {
+  const pct = total ? done / total : 0;
+  const shown = numKey(key);
+  return '<div class="card ring-card">' +
+    '<div class="ring">' + ringSvg(pct, 78, 31, 8, key) +
+      '<div class="pct" data-from="' + shown + '" data-to="' + Math.round(pct * 100) + '">' + shown + '%</div></div>' +
+    '<div class="grow" style="display:flex;flex-direction:column;gap:6px">' +
+      '<span class="done-line">' + esc(countText) + '</span>' +
+      '<span class="hint">' + hint + '</span>' +
+    '</div></div>';
+}
+const NUMS = {};
+function numKey(key) { const v = NUMS[key]; return v === undefined ? 0 : v; }
 
 const emptyHint = text =>
   '<div class="dash">' + text + '<br><span style="color:var(--muted)">Списки настраиваются по нажатию на логотип.</span></div>';
@@ -360,13 +388,10 @@ function viewCheck() {
   const next = all.find(i => !i.done);
   const st = streak();
 
-  let h = '<div class="card ring-card">' +
-    '<div class="ring">' + ringSvg(pct, 78, 31, 8) + '<div class="pct">' + Math.round(pct * 100) + '%</div></div>' +
-    '<div class="grow" style="display:flex;flex-direction:column;gap:6px">' +
-      '<span class="done-line">' + done + ' из ' + total + ' ' + plural(total, 'пункта', 'пунктов', 'пунктов') + '</span>' +
-      '<span class="hint">' + (total === 0 ? 'На сегодня пунктов нет.'
-        : next ? 'Дальше: ' + esc(next.text.toLowerCase()) : 'День закрыт полностью. Можно выдохнуть.') + '</span>' +
-    '</div></div>';
+  let h = ringCard('check', done, total,
+    done + ' из ' + total + ' ' + plural(total, 'пункта', 'пунктов', 'пунктов'),
+    total === 0 ? 'На сегодня пунктов нет.'
+      : next ? 'Дальше: ' + esc(next.text.toLowerCase()) : 'День закрыт полностью. Можно выдохнуть.');
 
   if (st > 0) {
     const now = new Date();
@@ -428,13 +453,12 @@ function viewCheck() {
 function viewStop() {
   if (!S.stops.length) return emptyHint('Стоп-лист пуст.');
   const holding = S.stops.filter(x => !x.slipped).length;
-  return '<div class="card pad row" style="gap:16px">' +
-      '<span class="stop-ic">' + svg('stop', { size:24, color:'var(--accent)', width:1.5 }) + '</span>' +
-      '<div class="grow" style="display:flex;flex-direction:column;gap:4px">' +
-        '<span class="big">' + holding + ' из ' + S.stops.length + ' держатся</span>' +
-        '<span class="hint">' + (S.stops.some(x => x.slipped)
-          ? 'Один срыв не отменяет день. Отмечайте честно.'
-          : 'Ни одного срыва сегодня. Так и держите.') + '</span></div></div>' +
+  const best = S.stops.filter(x => !x.slipped).reduce((a, x) => Math.max(a, x.clean), 0);
+  return ringCard('stop', holding, S.stops.length,
+      holding + ' из ' + S.stops.length + ' держатся',
+      S.stops.some(x => x.slipped) ? 'Один срыв не отменяет день. Отмечайте честно.'
+        : best ? 'Ни одного срыва сегодня. Лучшая серия — ' + best + ' ' + plural(best, 'день', 'дня', 'дней') + '.'
+        : 'Ни одного срыва сегодня. Так и держите.') +
     '<section class="card flush">' +
       '<div class="sec-h"><span class="sec-t">Чего не делаю</span>' +
       '<span class="sec-s">Нажмите, если сорвались — серия обнулится</span></div>' +
@@ -460,12 +484,9 @@ function viewMeds() {
   }
   const taken = today.filter(m => m.done).length, total = today.length;
   const next = PHASES.flatMap(p => today.filter(m => m.phase === p.key)).find(m => !m.done);
-  let h = '<div class="card ring-card">' +
-    '<div class="ring">' + ringSvg(total ? taken / total : 0, 78, 31, 8) + '<div class="pct">' + taken + '/' + total + '</div></div>' +
-    '<div class="grow" style="display:flex;flex-direction:column;gap:6px">' +
-      '<span class="done-line">' + taken + ' из ' + total + ' ' + plural(total, 'приёма', 'приёмов', 'приёмов') + '</span>' +
-      '<span class="hint">' + (next ? 'Дальше: ' + esc(next.name) + ', ' + medLine(next) : 'Всё принято. На сегодня закрыто.') + '</span>' +
-    '</div></div>';
+  let h = ringCard('meds', taken, total,
+    taken + ' из ' + total + ' ' + plural(total, 'приёма', 'приёмов', 'приёмов'),
+    next ? 'Дальше: ' + esc(next.name) + ', ' + medLine(next) : 'Всё принято. На сегодня закрыто.');
   for (const p of PHASES) {
     const list = today.filter(m => m.phase === p.key);
     if (!list.length) continue;
@@ -500,12 +521,9 @@ function viewWish() {
     ? 'Ближайшее — ' + up.w.text.toLowerCase() + ', ' + up.d + ' ' + plural(up.d, 'день', 'дня', 'дней')
     : 'Ближайших дат нет';
 
-  let h = '<div class="card pad row" style="justify-content:space-between">' +
-    '<div class="grow" style="display:flex;flex-direction:column;gap:3px">' +
-      '<span class="big">' + doneN + ' из ' + S.wishes.length + '</span>' +
-      '<span class="hint">исполнено из списка желаний</span>' +
-      '<span style="font-size:12px;line-height:1.4;color:var(--ink-2)">' + esc(nearest) + '</span></div>' +
-    ringSvg(pct, 46, 18, 6) + '</div>';
+  let h = ringCard('wish', doneN, S.wishes.length,
+    doneN + ' из ' + S.wishes.length + ' ' + plural(S.wishes.length, 'исполнено', 'исполнено', 'исполнено'),
+    esc(nearest));
 
   h += '<div style="display:flex;flex-direction:column;gap:10px">' + S.wishes.map(w => {
     const left = w.due ? daysLeft(w.due) : null;
@@ -543,7 +561,15 @@ function viewWish() {
 
 /* ---------- экран: дневник ---------- */
 function viewDiary() {
-  return '<div class="card pad" style="display:flex;flex-direction:column;gap:14px">' +
+  const f = S.fields;
+  const filled = ['good', 'hard', 'thanks'].filter(k => (f[k] || '').trim()).length;
+  const saved = S.entries.length && S.entries[0].date === new Date().getDate() + ' ' + MONTHS[new Date().getMonth()];
+  return ringCard('diary', filled, 3, filled + ' из 3 полей',
+      saved ? 'Запись за сегодня сохранена.'
+        : filled === 3 ? 'Всё заполнено — можно сохранять.'
+        : filled ? 'Осталось ' + (3 - filled) + ' ' + plural(3 - filled, 'поле', 'поля', 'полей') + '.'
+        : 'Настроение и три строки — весь итог дня.') +
+    '<div class="card pad" style="display:flex;flex-direction:column;gap:14px">' +
       '<span class="eyebrow">Как прошёл день</span><div class="moods">' +
       MOODS.map((label, i) =>
         '<button class="mood' + (S.mood === i ? ' on' : '') + '" data-act="mood" data-i="' + i + '">' +
@@ -569,7 +595,7 @@ function viewDiary() {
 
 const VIEWS = { check:viewCheck, stop:viewStop, meds:viewMeds, wish:viewWish, diary:viewDiary };
 
-function render(keepScroll) {
+function render(keepScroll, cascade) {
   const y = keepScroll ? $screen.scrollTop : 0;
   const t = TITLES[S.tab] || TITLES.check;
   document.getElementById('eyebrow').textContent = t.eyebrow;
@@ -578,7 +604,132 @@ function render(keepScroll) {
   $screen.innerHTML = (VIEWS[S.tab] || viewCheck)();
   renderNav();
   $screen.scrollTop = y;
+  if (cascade && !reducedMotion) cascadeIn();
+  afterRender();
 }
+
+/* Списки выходят по одному: шаг 30 мс, весь экран собирается примерно за треть секунды. */
+const RISE_STEP = 30, RISE_MAX = 14;
+function cascadeIn() {
+  const rows = $screen.querySelectorAll('.card, .grp-h, .sec-h, .item, .chip, .entry, .streak, .dash');
+  let n = 0;
+  for (const el of rows) {
+    el.style.animationDelay = Math.min(n++, RISE_MAX) * RISE_STEP + 'ms';
+    el.classList.add('rise');
+    el.addEventListener('animationend', () => { el.classList.remove('rise'); el.style.animationDelay = ''; }, { once: true });
+  }
+}
+
+/* Кольцо доезжает до нового значения, процент докручивается. */
+let numRaf = null;
+function afterRender() {
+  const c = $screen.querySelector('.ring circle[data-to]');
+  if (c) requestAnimationFrame(() => { c.style.strokeDashoffset = c.dataset.to; });
+  const pctEl = $screen.querySelector('.pct[data-to]');
+  if (!pctEl) return;
+  const from = Number(pctEl.dataset.from) || 0, to = Number(pctEl.dataset.to) || 0;
+  NUMS[S.tab] = to;
+  cancelAnimationFrame(numRaf);
+  if (reducedMotion || from === to || document.visibilityState !== 'visible') { pctEl.textContent = to + '%'; return; }
+  const t0 = performance.now(), dur = 500;
+  const ease = k => 1 - Math.pow(1 - k, 3);
+  const step = now => {
+    const k = Math.min(1, (now - t0) / dur);
+    pctEl.textContent = Math.round(from + (to - from) * ease(k)) + '%';
+    if (k < 1) numRaf = requestAnimationFrame(step);
+  };
+  numRaf = requestAnimationFrame(step);
+}
+
+/* ---------- свайп между вкладками ---------- */
+/* Экран едет за пальцем; отпустили за четверть ширины — переходим на соседнюю вкладку. */
+const SW_LOCK = 10, SW_PART = 0.25, SW_FAST = 0.45, SW_MIN = 44;
+let swId = null, swX = 0, swY = 0, swT = 0, swDir = 0, swOn = false, swTo = null, swMoved = false;
+
+const tabAt = n => (TABS[n] ? TABS[n].key : null);
+function neighbour(dx) {
+  const i = TABS.findIndex(t => t.key === S.tab);
+  return tabAt(dx < 0 ? i + 1 : i - 1);
+}
+function swReset() {
+  $screen.classList.remove('swiping');
+  $screen.style.transform = '';
+  swId = null; swOn = false; swTo = null; swDir = 0;
+}
+function swCancel() {
+  if (!swOn) { swId = null; return; }
+  $screen.classList.add('sw-back');
+  $screen.style.transform = '';
+  navUlAt(S.tab, S.tab, 0);
+  const done = () => { $screen.classList.remove('sw-back'); swReset(); };
+  $screen.addEventListener('transitionend', done, { once: true });
+  setTimeout(done, 260);
+  swDropFlag();
+  $screen.classList.remove('swiping');
+  swOn = false;
+}
+
+$screen.addEventListener('pointerdown', e => {
+  if (sheetOpen || swId !== null || e.isPrimary === false) return;
+  if (e.target.closest('textarea, input, select, .del')) return;
+  swId = e.pointerId; swX = e.clientX; swY = e.clientY; swT = performance.now();
+  swDir = 0; swOn = false; swMoved = false; swTo = null;
+});
+
+$screen.addEventListener('pointermove', e => {
+  if (e.pointerId !== swId) return;
+  const dx = e.clientX - swX, dy = e.clientY - swY;
+  if (!swDir) {
+    if (Math.abs(dx) < SW_LOCK && Math.abs(dy) < SW_LOCK) return;
+    swDir = Math.abs(dx) > Math.abs(dy) * 1.2 ? 1 : -1;    // -1 — обычная вертикальная прокрутка
+    if (swDir === 1) {
+      swTo = neighbour(dx);
+      if (!swTo) { swDir = -1; return; }
+      swOn = true; swMoved = true;
+      $screen.classList.add('swiping');
+    }
+    return;
+  }
+  if (!swOn) return;
+  e.preventDefault();
+  const w = $screen.clientWidth || 1;
+  const to = neighbour(dx);
+  if (to !== swTo) { swTo = to; }                          // палец сменил направление
+  const lim = swTo ? dx : dx * 0.25;                       // края списка тянутся с сопротивлением
+  $screen.style.transform = 'translateX(' + lim + 'px)';
+  if (swTo) navUlAt(S.tab, swTo, Math.min(1, Math.abs(dx) / w));
+}, { passive: false });
+
+function swEnd(e) {
+  if (e.pointerId !== swId) return;
+  if (!swOn) { swId = null; return; }
+  const dx = e.clientX - swX, w = $screen.clientWidth || 1;
+  const v = Math.abs(dx) / Math.max(1, performance.now() - swT);
+  const need = Math.max(SW_MIN, w * SW_PART);   // на узком экране порог не должен вырождаться
+  const go = swTo && (Math.abs(dx) > need || (v > SW_FAST && Math.abs(dx) > SW_MIN));
+  swDropFlag();
+  if (!go) { swCancel(); return; }
+
+  const dir = dx < 0 ? 'l' : 'r';
+  const next = swTo;
+  $screen.classList.remove('swiping');
+  $screen.classList.add('sw-out');
+  $screen.style.transform = 'translateX(' + (dx < 0 ? -w : w) + 'px)';
+  const finish = () => {
+    $screen.classList.remove('sw-out');
+    $screen.style.transform = '';
+    swReset();
+    S.tab = next; save();
+    switchScreen(dir);
+  };
+  $screen.addEventListener('transitionend', finish, { once: true });
+  setTimeout(finish, 220);
+}
+$screen.addEventListener('pointerup', swEnd);
+$screen.addEventListener('pointercancel', e => { if (e.pointerId === swId) swCancel(); });
+/* после свайпа палец отпускается над кнопкой — гасим случайный клик, но только его */
+$screen.addEventListener('click', e => { if (swMoved) { swMoved = false; e.stopPropagation(); e.preventDefault(); } }, true);
+function swDropFlag() { setTimeout(() => { swMoved = false; }, 0); }
 
 /* ============================ настройки ============================ */
 
@@ -931,6 +1082,7 @@ const ACTIONS = {
     i.done = !i.done;
     if (i.done) splashAt(el.querySelector('.box'));
     commit();
+    if (i.done) animateOnce($screen.querySelector('.ring-card'), 'nudge');
     if (i.done) animateOnce(document.querySelector('[data-act="item"][data-id="' + i.id + '"] .box'), 'pop');
   },
   moment(el) {
@@ -1012,6 +1164,7 @@ const ACTIONS = {
     m.done = !m.done;
     if (m.done) splashAt(el.querySelector('.box'));
     commit();
+    if (m.done) animateOnce($screen.querySelector('.ring-card'), 'nudge');
     if (m.done) animateOnce(document.querySelector('[data-act="med"][data-id="' + m.id + '"] .box'), 'pop');
   },
   'add-med'() {
@@ -1579,7 +1732,7 @@ function sheetData() {
 
 try {
   rollover();
-  render(false);
+  render(false, true);
   splash();
 } catch (e) {
   fatal(e && e.message || e);

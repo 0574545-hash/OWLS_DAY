@@ -101,7 +101,9 @@ main > *{flex:0 0 auto}
 .ring-card{display:flex;align-items:center;gap:18px;padding:18px}
 .ring{position:relative;width:78px;height:78px;flex:none}
 .ring .pct{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--display);font-weight:800;font-size:17px;letter-spacing:-.02em}
-.ring circle{transition:stroke-dashoffset .45s cubic-bezier(.4,0,.2,1)}
+.ring circle{transition:stroke-dashoffset .55s cubic-bezier(.4,0,.2,1)}
+.ring .pct{font-variant-numeric:tabular-nums}
+.ring-card{transition:transform .2s ease}
 .done-line{font-family:var(--display);font-weight:700;font-size:15px}
 .streak{background:var(--ink);border-radius:var(--r);padding:16px 18px;display:flex;align-items:center;justify-content:space-between;gap:14px}
 .streak-n{font-family:var(--display);font-weight:800;font-size:17px;color:#fff}
@@ -139,7 +141,6 @@ main > *{flex:0 0 auto}
 .pill{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border-radius:999px;padding:6px 11px;flex:none}
 .pill.ok{color:var(--ok);background:var(--ok-bg)}
 .pill.bad{color:var(--bad);background:var(--bad-bg)}
-.stop-ic{width:52px;height:52px;border-radius:999px;background:var(--bg);border:1px solid var(--line-input);display:grid;place-items:center;flex:none}
 .big{font-family:var(--display);font-weight:800;font-size:18px}
 
 /* ---------- set ---------- */
@@ -310,6 +311,14 @@ nav span{transition:color .2s ease}
 .wish-photo{width:88px;height:88px;border-radius:10px;flex:none;object-fit:cover;border:1px solid var(--line-input)}
 
 
+/* ---------- каскад и свайп ---------- */
+.rise{animation:rise .38s cubic-bezier(.2,.7,.2,1) both}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+#screen{touch-action:pan-y}
+#screen.swiping{overflow-y:hidden}
+#screen.sw-out{transition:transform .16s ease-out}
+#screen.sw-back{transition:transform .22s cubic-bezier(.2,.8,.3,1)}
+
 /* ---------- переход между вкладками ---------- */
 #screen.go-l{animation:scr-l .26s cubic-bezier(.2,.7,.2,1)}
 #screen.go-r{animation:scr-r .26s cubic-bezier(.2,.7,.2,1)}
@@ -385,6 +394,6 @@ canvas#fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-in
   <button class="save" data-act="hard-reset">Сбросить кэш и перезагрузить</button>
 </div>
 <div class="toast" id="toast"></div>
-<script src="app.js?v=12"></script>
+<script src="app.js?v=13"></script>
 </body>
 </html>
