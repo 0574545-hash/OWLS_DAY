@@ -305,13 +305,38 @@ const headerDate = () => {
 };
 
 function renderNav() {
-  $nav.innerHTML = TABS.map(t => {
-    const on = S.tab === t.key;
-    return '<button data-act="tab" data-tab="' + t.key + '" class="' + (on ? 'on' : '') +
-      '" aria-current="' + (on ? 'page' : 'false') + '">' +
-      svg(t.icon, { size:21, color: on ? 'var(--accent)' : '#9AA1AB', width:1.8 }) +
-      '<span>' + t.label + '</span><i class="ul"></i></button>';
-  }).join('');
+  if (!$nav.querySelector('button')) {
+    $nav.innerHTML = TABS.map(t =>
+      '<button data-act="tab" data-tab="' + t.key + '">' +
+        svg(t.icon, { size:21, color:'#9AA1AB', width:1.8 }) +
+        '<span>' + t.label + '</span><i class="ul"></i></button>').join('') +
+      '<i class="nav-ul" aria-hidden="true"></i>';
+  }
+  for (const b of $nav.querySelectorAll('button')) {
+    const on = b.dataset.tab === S.tab;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-current', on ? 'page' : 'false');
+    b.querySelector('svg').setAttribute('stroke', on ? 'var(--accent)' : '#9AA1AB');
+  }
+  moveNavUl();
+}
+/** Подчёркивание — один элемент на всё меню, переезжает под активную вкладку. */
+function moveNavUl() {
+  const b = $nav.querySelector('button.on'), ul = $nav.querySelector('.nav-ul');
+  const s = b && b.querySelector('.ul');
+  if (!s || !ul) return;
+  ul.style.transform = 'translate(' + s.offsetLeft + 'px,' + s.offsetTop + 'px)';
+  ul.classList.add('ready');
+}
+addEventListener('resize', moveNavUl);
+
+/** Новый экран въезжает со стороны нажатой вкладки; шапка чуть поднимается. */
+function switchScreen(dir) {
+  render(false);
+  if (reducedMotion) return;
+  $screen.classList.remove('go-l', 'go-r');   // быстрые нажатия подряд: старый класс не должен остаться
+  animateOnce($screen, 'go-' + dir);
+  animateOnce(document.querySelector('.hd-t'), 'go');
 }
 
 function ringSvg(pct, size, r, w) {
@@ -888,7 +913,13 @@ function commitSheet() { save(); renderSheet(); }
 
 const ACTIONS = {
   /* навигация */
-  tab(el) { S.tab = el.dataset.tab; save(); render(false); },
+  tab(el) {
+    const next = el.dataset.tab;
+    if (next === S.tab) { $screen.scrollTo({ top:0, behavior: reducedMotion ? 'auto' : 'smooth' }); return; }
+    const dir = TABS.findIndex(t => t.key === next) > TABS.findIndex(t => t.key === S.tab) ? 'l' : 'r';
+    S.tab = next; save();
+    switchScreen(dir);
+  },
   settings() { openSheet(); },
   'close-settings'() { closeSheet(); },
   'sheet-tab'(el) { sheetTab = el.dataset.tab; renderSheet(); },
