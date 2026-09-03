@@ -563,6 +563,7 @@ const SHEET_TABS = [
   { key:'meds',  label:'Лекарства' },
   { key:'set',   label:'Установки' },
   { key:'wish',  label:'Желания'   },
+  { key:'data',  label:'Данные'    },
 ];
 
 let sheetOpen = false;
@@ -717,7 +718,7 @@ function sheetWish() {
     }).join('') : '<div class="empty">Пока пусто.</div>');
 }
 
-const SHEET_VIEWS = { check:sheetCheck, stop:sheetStop, meds:sheetMeds, set:sheetSet, wish:sheetWish };
+const SHEET_VIEWS = { check:sheetCheck, stop:sheetStop, meds:sheetMeds, set:sheetSet, wish:sheetWish, data:sheetData };
 
 function renderSheet() {
   $seg.innerHTML = SHEET_TABS.map(t =>
@@ -1032,6 +1033,13 @@ const ACTIONS = {
     toast('Желание добавлено');
   },
   'del-wish'(el) { S.wishes = S.wishes.filter(x => x.id !== el.dataset.id); commitSheet(); },
+
+  /* настройки: данные */
+  'xl-export'() {
+    try { deliverFile(xlExport(), 'owls-day-' + dayKeyOf(new Date()) + '.xlsx'); }
+    catch (e) { toast('Не удалось собрать файл: ' + (e && e.message || e)); }
+  },
+  'xl-import'() { $xlsx.click(); },
 };
 
 /* удержание чипа «в моменте» (~0,6 с) сбрасывает его счётчик */
@@ -1140,6 +1148,401 @@ document.addEventListener('visibilitychange', () => {
   rollover();
   if (before !== S.dayKey) { render(false); if (sheetOpen) renderSheet(); }
 });
+
+/* ============================ Excel: экспорт и импорт ============================ */
+/* Свой минимальный xlsx: zip без сжатия на запись, DecompressionStream на чтение. Без библиотек. */
+
+const XL_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+const XL_SHEETS = {
+  check:  { name:'Чек-лист',  cols:['Блок','Пункт','Время','Дни'],            w:[10,36,9,22] },
+  moment: { name:'В моменте', cols:['Отметка'],                                 w:[36] },
+  stop:   { name:'Стоп-лист', cols:['Запрет','Чисто дней'],                    w:[36,12] },
+  meds:   { name:'Лекарства', cols:['Название','Форма','Количество','Когда','Приём','Частота','Начало'], w:[28,11,12,9,15,14,12] },
+  set:    { name:'Установки', cols:['Текст'],                                   w:[48] },
+  wish:   { name:'Желания',   cols:['Желание','Категория','Заметка','Дата','Исполнено'], w:[36,14,24,12,11] },
+  diary:  { name:'Дневник',   cols:['Дата','Настроение','Запись'],             w:[14,12,60] },
+  hist:   { name:'История',   cols:['Дата'],                                   w:[14] },
+};
+const XL_HINT = {
+  check:  'Блок: Утро / День / Вечер. Время ЧЧ:ММ. Дни: «Каждый день», «Будни», «Выходные» или «пн, ср, пт».',
+  moment: 'По одной отметке в строке.',
+  stop:   'Чисто дней — число; можно оставить пустым.',
+  meds:   'Форма: Таблетка / Капли / Порция. Приём: до еды / во время еды / после еды. Частота: Ежедневно / Через день / Раз в 3 дня / Раз в неделю.',
+  set:    'По одной установке в строке.',
+  wish:   'Дата — ГГГГ-ММ-ДД или обычная дата Excel. Исполнено: да / нет.',
+  diary:  'Записи как есть: дата текстом, настроение — одно из: ' + MOODS.join(', ') + '.',
+  hist:   'Дни, когда была хотя бы одна отметка. Влияет на серию.',
+};
+
+/* ---------- zip ---------- */
+const CRC_T = (() => { const t = new Uint32Array(256); for (let i = 0; i < 256; i++) { let c = i; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[i] = c >>> 0; } return t; })();
+function crc32(u8) { let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = CRC_T[(c ^ u8[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+
+/** Собираем zip без сжатия (метод 0) — читается всем, а размеры тут крошечные. */
+function zipStore(files) {
+  const enc = new TextEncoder();
+  const parts = [], cd = [];
+  let off = 0;
+  for (const f of files) {
+    const n = enc.encode(f.name), d = f.data, crc = crc32(d);
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x800, true);
+    lh.setUint16(8, 0, true); lh.setUint16(10, 0, true); lh.setUint16(12, 0x21, true);
+    lh.setUint32(14, crc, true); lh.setUint32(18, d.length, true); lh.setUint32(22, d.length, true);
+    lh.setUint16(26, n.length, true); lh.setUint16(28, 0, true);
+    parts.push(new Uint8Array(lh.buffer), n, d);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x800, true);
+    ch.setUint16(10, 0, true); ch.setUint16(12, 0, true); ch.setUint16(14, 0x21, true);
+    ch.setUint32(16, crc, true); ch.setUint32(20, d.length, true); ch.setUint32(24, d.length, true);
+    ch.setUint16(28, n.length, true); ch.setUint32(42, off, true);
+    cd.push(new Uint8Array(ch.buffer), n);
+    off += 30 + n.length + d.length;
+  }
+  const cdSize = cd.reduce((s, p) => s + p.length, 0);
+  const e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true);
+  e.setUint32(12, cdSize, true); e.setUint32(16, off, true);
+  return new Blob([...parts, ...cd, new Uint8Array(e.buffer)], { type: XL_MIME });
+}
+
+async function inflateRaw(data) {
+  if (typeof DecompressionStream === 'undefined') throw new Error('Этот браузер не умеет распаковывать xlsx — обновите систему');
+  const ds = new DecompressionStream('deflate-raw');
+  const w = ds.writable.getWriter();
+  w.write(data); w.close();
+  return new Uint8Array(await new Response(ds.readable).arrayBuffer());
+}
+
+/** Читаем zip: имя → байты. Размеры берём из центрального каталога — он надёжнее локальных заголовков. */
+async function zipRead(buf) {
+  const dv = new DataView(buf), u8 = new Uint8Array(buf), dec = new TextDecoder();
+  let eocd = -1;
+  for (let i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 70000); i--) {
+    if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error('Это не файл xlsx');
+  const count = dv.getUint16(eocd + 10, true);
+  let p = dv.getUint32(eocd + 16, true);
+  const out = {};
+  for (let i = 0; i < count; i++) {
+    if (dv.getUint32(p, true) !== 0x02014b50) break;
+    const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true);
+    const nlen = dv.getUint16(p + 28, true), elen = dv.getUint16(p + 30, true), clen = dv.getUint16(p + 32, true);
+    const loff = dv.getUint32(p + 42, true);
+    const name = dec.decode(u8.subarray(p + 46, p + 46 + nlen));
+    const start = loff + 30 + dv.getUint16(loff + 26, true) + dv.getUint16(loff + 28, true);
+    const data = u8.slice(start, start + csize);
+    if (method === 0) out[name] = data;
+    else if (method === 8) out[name] = await inflateRaw(data);
+    else throw new Error('Файл сжат неподдерживаемым способом');
+    p += 46 + nlen + elen + clen;
+  }
+  return out;
+}
+
+/* ---------- xlsx ---------- */
+const xmlEsc = s => String(s ?? '').replace(/[&<>]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[c]));
+const colName = n => { let s = ''; n++; while (n) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = (n - m - 1) / 26; } return s; };
+const colIndex = ref => { let n = 0; for (const ch of ref) { if (ch < 'A' || ch > 'Z') break; n = n * 26 + ch.charCodeAt(0) - 64; } return n - 1; };
+
+/** sheets: [{ name, rows:[[…]], w:[ширины] }] → Blob. Строки — inlineStr, числа — числа. */
+function xlsxBuild(sheets) {
+  const enc = new TextEncoder();
+  const head = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+  const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+  const files = [];
+  const sheetXml = sh => {
+    const cols = sh.w ? '<cols>' + sh.w.map((w, i) => '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + w + '" customWidth="1"/>').join('') + '</cols>' : '';
+    const rows = sh.rows.map((r, ri) => '<row r="' + (ri + 1) + '">' + r.map((v, ci) => {
+      const ref = colName(ci) + (ri + 1);
+      if (typeof v === 'number' && Number.isFinite(v)) return '<c r="' + ref + '"><v>' + v + '</v></c>';
+      if (v === '' || v == null) return '';
+      return '<c r="' + ref + '" t="inlineStr"><is><t xml:space="preserve">' + xmlEsc(v) + '</t></is></c>';
+    }).join('') + '</row>').join('');
+    return head + '<worksheet xmlns="' + NS + '">' + cols + '<sheetData>' + rows + '</sheetData></worksheet>';
+  };
+  files.push({ name:'[Content_Types].xml', data: enc.encode(head +
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+    '<Default Extension="xml" ContentType="application/xml"/>' +
+    '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+    sheets.map((s, i) => '<Override PartName="/xl/worksheets/sheet' + (i + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>').join('') +
+    '</Types>') });
+  files.push({ name:'_rels/.rels', data: enc.encode(head +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    '<Relationship Id="rId1" Type="' + REL + '/officeDocument" Target="xl/workbook.xml"/></Relationships>') });
+  files.push({ name:'xl/workbook.xml', data: enc.encode(head +
+    '<workbook xmlns="' + NS + '" xmlns:r="' + REL + '"><sheets>' +
+    sheets.map((s, i) => '<sheet name="' + xmlEsc(s.name).replace(/"/g, '&quot;') + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>').join('') +
+    '</sheets></workbook>') });
+  files.push({ name:'xl/_rels/workbook.xml.rels', data: enc.encode(head +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    sheets.map((s, i) => '<Relationship Id="rId' + (i + 1) + '" Type="' + REL + '/worksheet" Target="worksheets/sheet' + (i + 1) + '.xml"/>').join('') +
+    '</Relationships>') });
+  sheets.forEach((s, i) => files.push({ name:'xl/worksheets/sheet' + (i + 1) + '.xml', data: enc.encode(sheetXml(s)) }));
+  return zipStore(files);
+}
+
+/** ArrayBuffer → { имяЛиста: [[ячейки…], …] }. Понимает общие строки, inline-строки, числа, булевы. */
+async function xlsxParse(buf) {
+  const z = await zipRead(buf);
+  const dec = new TextDecoder();
+  const xml = n => {
+    const d = z[n]; if (!d) return null;
+    const doc = new DOMParser().parseFromString(dec.decode(d), 'application/xml');
+    return doc.getElementsByTagName('parsererror').length ? null : doc;
+  };
+  const all = (el, tag) => Array.from(el.getElementsByTagNameNS('*', tag));
+  const wb = xml('xl/workbook.xml');
+  if (!wb) throw new Error('В файле нет книги Excel');
+  const relMap = {};
+  const rels = xml('xl/_rels/workbook.xml.rels');
+  if (rels) for (const r of all(rels, 'Relationship')) relMap[r.getAttribute('Id')] = r.getAttribute('Target');
+  const sst = [];
+  const ss = xml('xl/sharedStrings.xml');
+  if (ss) for (const si of all(ss, 'si')) sst.push(all(si, 't').filter(t => t.parentNode.localName !== 'rPh').map(t => t.textContent).join(''));
+  const out = {};
+  for (const sh of all(wb, 'sheet')) {
+    const rid = sh.getAttribute('r:id') || sh.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
+    let target = relMap[rid] || '';
+    target = target.startsWith('/') ? target.slice(1) : 'xl/' + target;
+    const doc = xml(target);
+    if (!doc) continue;
+    const rows = [];
+    for (const row of all(doc, 'row')) {
+      const r = [];
+      let ci = 0;
+      for (const c of all(row, 'c')) {
+        const ref = c.getAttribute('r');
+        if (ref) ci = colIndex(ref);
+        const t = c.getAttribute('t'), v = all(c, 'v')[0];
+        let val = '';
+        if (t === 's') val = sst[Number(v && v.textContent)] ?? '';
+        else if (t === 'inlineStr') val = all(c, 't').map(x => x.textContent).join('');
+        else if (t === 'b') val = v && v.textContent === '1' ? 'да' : 'нет';
+        else if (t === 'str' || t === 'e') val = v ? v.textContent : '';
+        else if (v) { const n = Number(v.textContent); val = Number.isFinite(n) ? n : v.textContent; }
+        r[ci] = val;
+        ci++;
+      }
+      rows.push(r);
+    }
+    out[sh.getAttribute('name')] = rows;
+  }
+  return out;
+}
+
+/* ---------- значения ячеек ---------- */
+const cellStr = v => (typeof v === 'number' ? String(v) : String(v ?? '')).trim().slice(0, MAX_LEN);
+const norm = s => cellStr(s).toLowerCase().replace(/ё/g, 'е');
+/** Дата из ячейки: серийное число Excel, ГГГГ-ММ-ДД или ДД.ММ.ГГГГ → ключ дня. */
+function cellDay(v) {
+  if (typeof v === 'number') {
+    if (v < 1) return '';
+    const d = new Date(Date.UTC(1899, 11, 30) + Math.round(v) * 86400000);
+    return d.getUTCFullYear() + '-' + pad2(d.getUTCMonth() + 1) + '-' + pad2(d.getUTCDate());
+  }
+  const s = cellStr(v);
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return m[1] + '-' + pad2(+m[2]) + '-' + pad2(+m[3]);
+  m = s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})/);
+  if (m) return m[3] + '-' + pad2(+m[2]) + '-' + pad2(+m[1]);
+  return '';
+}
+/** Время: доля суток Excel или «7:00» → «07:00». */
+function cellTime(v) {
+  if (typeof v === 'number') {
+    const mins = Math.round((v - Math.floor(v)) * 1440) % 1440;
+    return pad2(Math.floor(mins / 60)) + ':' + pad2(mins % 60);
+  }
+  const m = cellStr(v).match(/^(\d{1,2}):(\d{2})/);
+  return m ? pad2(Math.min(23, +m[1])) + ':' + m[2] : '';
+}
+function cellDays(v) {
+  const s = norm(v);
+  if (!s || s === 'каждый день' || s === 'ежедневно') return [...EVERYDAY];
+  if (s === 'будни') return [...WEEKDAY_SET];
+  if (s === 'выходные') return [...WEEKEND_SET];
+  const out = [];
+  for (const part of s.split(/[,;\s]+/)) {
+    const d = DOW.find(x => x.s === part.slice(0, 2));
+    if (d && !out.includes(d.n)) out.push(d.n);
+  }
+  return out.length ? out : [...EVERYDAY];
+}
+const cellYes = v => /^(да|yes|true|1|\+|✓|x|х)$/.test(norm(v));
+const keyOf = (obj, s) => Object.keys(obj).find(k => norm(obj[k].label ?? obj[k].name ?? obj[k]) === norm(s));
+
+/* ---------- экспорт ---------- */
+function xlExportRows() {
+  const phaseName = k => (PHASES.find(p => p.key === k) || PHASES[1]).name;
+  return {
+    check:  PHASES.flatMap(p => S.items[p.key].map(i => [p.name, i.text, i.time || '', repeatLabel(i.days)])),
+    moment: S.moments.map(m => [m.label]),
+    stop:   S.stops.map(x => [x.text, x.clean]),
+    meds:   S.meds.map(m => [m.name, (MED_FORMS[m.form] || MED_FORMS.tab).label, m.qty, phaseName(m.phase),
+              MED_MEAL[m.meal] || MED_MEAL.after, MED_EVERY[Number(m.every) || 1], m.start || '']),
+    set:    S.intentions.map(i => [i.text]),
+    wish:   S.wishes.map(w => [w.text, w.cat || '', w.note || '', w.due || '', w.done ? 'да' : 'нет']),
+    diary:  S.entries.map(e => [e.date, e.mood, e.text]),
+    hist:   [...S.history].sort().map(d => [d]),
+  };
+}
+function xlExport() {
+  const data = xlExportRows();
+  const sheets = Object.keys(XL_SHEETS).map(k => ({ name: XL_SHEETS[k].name, w: XL_SHEETS[k].w, rows: [XL_SHEETS[k].cols, ...data[k]] }));
+  return xlsxBuild(sheets);
+}
+/** На iPhone файл уходит через «Поделиться» (иначе PWA его не сохранит), на остальных — обычная загрузка. */
+function deliverFile(blob, name) {
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (ios && navigator.canShare) {
+    const file = new File([blob], name, { type: blob.type });
+    if (navigator.canShare({ files:[file] })) {
+      navigator.share({ files:[file], title: name }).catch(() => {});
+      return;
+    }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
+
+/* ---------- импорт ---------- */
+/** Лист → строки-объекты по заголовкам; null, если листа нет или заголовок не совпал. */
+function xlTable(book, key) {
+  const def = XL_SHEETS[key];
+  const name = Object.keys(book).find(n => norm(n) === norm(def.name));
+  if (!name) return null;
+  const rows = book[name];
+  if (!rows.length) return [];
+  const head = rows[0].map(norm);
+  const idx = def.cols.map(c => head.indexOf(norm(c)));
+  if (idx[0] < 0) return null;
+  return rows.slice(1)
+    .map(r => Object.fromEntries(def.cols.map((c, i) => [i, idx[i] < 0 ? '' : (r[idx[i]] ?? '')])))
+    .filter(o => cellStr(o[0]) !== '');
+}
+/** Старый элемент с тем же текстом остаётся (id, отметки, фото), новый — создаётся. */
+function pickOld(list, text, field) {
+  const k = norm(text);
+  const i = list.findIndex(x => norm(x[field]) === k);
+  return i < 0 ? null : list.splice(i, 1)[0];
+}
+
+function xlImport(book) {
+  const today = dayKeyOf(new Date());
+  const done = [];
+  let t;
+
+  if ((t = xlTable(book, 'check'))) {
+    const pool = PHASES.flatMap(p => S.items[p.key]);
+    const items = { morning:[], day:[], evening:[] };
+    for (const r of t) {
+      const time = cellTime(r[2]);
+      const phase = (PHASES.find(p => norm(p.name) === norm(r[0])) || { key: phaseOfTime(time) }).key;
+      const old = pickOld(pool, r[1], 'text');
+      items[phase].push({ id: old ? old.id : uid(phase), text: cellStr(r[1]), time, days: cellDays(r[3]), done: old ? !!old.done : false });
+    }
+    for (const p of PHASES) items[p.key].sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
+    S.items = items;
+    done.push('чек-лист ' + t.length);
+  }
+  if ((t = xlTable(book, 'moment'))) {
+    const pool = S.moments;
+    S.moments = t.map(r => { const old = pickOld(pool, r[0], 'label'); return { id: old ? old.id : uid('q'), label: cellStr(r[0]), count: old ? old.count : 0 }; });
+    done.push('в моменте ' + t.length);
+  }
+  if ((t = xlTable(book, 'stop'))) {
+    const pool = S.stops;
+    S.stops = t.map(r => {
+      const old = pickOld(pool, r[0], 'text');
+      const n = typeof r[1] === 'number' ? Math.max(0, Math.round(r[1])) : (cellStr(r[1]) ? Number(cellStr(r[1])) : NaN);
+      return { id: old ? old.id : uid('s'), text: cellStr(r[0]), clean: Number.isFinite(n) ? n : (old ? old.clean : 0), slipped: old ? !!old.slipped : false };
+    });
+    done.push('стоп-лист ' + t.length);
+  }
+  if ((t = xlTable(book, 'meds'))) {
+    const pool = S.meds;
+    S.meds = t.map(r => {
+      const old = pickOld(pool, r[0], 'name');
+      const every = Number(keyOf(MED_EVERY, r[5]) || cellStr(r[5]).match(/\d+/)?.[0] || (old ? old.every : 1)) || 1;
+      return {
+        id: old ? old.id : uid('r'), name: cellStr(r[0]),
+        form: keyOf(MED_FORMS, r[1]) || (old ? old.form : 'tab'),
+        qty: Math.min(99, Math.max(1, Math.round(Number(r[2]) || (old ? old.qty : 1)))),
+        phase: (PHASES.find(p => norm(p.name) === norm(r[3])) || { key: old ? old.phase : 'morning' }).key,
+        meal: keyOf(MED_MEAL, r[4]) || (old ? old.meal : 'after'),
+        every, start: cellDay(r[6]) || (old ? old.start : today), done: old ? !!old.done : false,
+      };
+    });
+    done.push('лекарства ' + t.length);
+  }
+  if ((t = xlTable(book, 'set'))) {
+    const pool = S.intentions;
+    S.intentions = t.map(r => { const old = pickOld(pool, r[0], 'text'); return { id: old ? old.id : uid('i'), text: cellStr(r[0]) }; });
+    done.push('установки ' + t.length);
+  }
+  if ((t = xlTable(book, 'wish'))) {
+    const pool = S.wishes;
+    S.wishes = t.map(r => {
+      const old = pickOld(pool, r[0], 'text');
+      const isDone = cellYes(r[4]);
+      return { id: old ? old.id : uid('w'), text: cellStr(r[0]), cat: cellStr(r[1]), note: cellStr(r[2]), due: cellDay(r[3]),
+        done: isDone, doneAt: isDone ? (old && old.doneAt) || today : undefined, photo: old ? old.photo || '' : '' };
+    });
+    done.push('желания ' + t.length);
+  }
+  if ((t = xlTable(book, 'diary'))) {
+    S.entries = t.map(r => ({ id: uid('x'), date: cellStr(r[0]), mood: MOODS.find(m => norm(m) === norm(r[1])) || cellStr(r[1]), text: cellStr(r[2]).slice(0, MAX_LEN * 3) }));
+    done.push('дневник ' + t.length);
+  }
+  if ((t = xlTable(book, 'hist'))) {
+    const days = t.map(r => cellDay(r[0])).filter(d => d && d < today);
+    S.history = [...new Set([...S.history, ...days])].sort().slice(-400);
+    done.push('история ' + days.length);
+  }
+  return done;
+}
+
+const $xlsx = document.getElementById('xlsx-input');
+$xlsx.addEventListener('change', async () => {
+  const file = $xlsx.files && $xlsx.files[0];
+  $xlsx.value = '';
+  if (!file) return;
+  try {
+    const book = await xlsxParse(await file.arrayBuffer());
+    const known = Object.values(XL_SHEETS).filter(d => Object.keys(book).some(n => norm(n) === norm(d.name)));
+    if (!known.length) { toast('В файле нет знакомых листов'); return; }
+    if (!confirm('Заменить списки данными из файла?\nЛисты: ' + known.map(d => d.name).join(', ') + '.\nФото и сегодняшние отметки у совпадающих пунктов сохранятся.')) return;
+    const done = xlImport(book);
+    save();
+    renderSheet();
+    toast('Загружено: ' + done.join(', '));
+  } catch (e) {
+    console.warn(e);
+    toast('Не удалось прочитать файл: ' + (e && e.message || e));
+  }
+});
+
+function sheetData() {
+  return '<div class="form">' +
+      '<span class="sec-t">Excel</span>' +
+      '<span class="note">Один файл .xlsx со всеми списками и историей. Скачайте его как шаблон, отредактируйте в Excel или Numbers и загрузите обратно.</span>' +
+      '<button class="btn-add" data-act="xl-export">Скачать Excel</button>' +
+      '<button class="btn-ghost" data-act="xl-import" style="justify-content:center">Загрузить из Excel</button>' +
+      '<span class="note">При загрузке каждый лист заменяет свой список целиком. Листы, которых нет в файле, не трогаются. Фото желаний и сегодняшние отметки у пунктов с тем же названием сохраняются.</span>' +
+    '</div>' +
+    '<div class="blk">Листы шаблона</div>' +
+    Object.keys(XL_SHEETS).map(k =>
+      '<div class="mini"><span class="grow">' +
+        '<div class="m-t">' + esc(XL_SHEETS[k].name) + ' <span style="color:var(--faint)">· ' + esc(XL_SHEETS[k].cols.join(', ')) + '</span></div>' +
+        '<div class="m-s">' + esc(XL_HINT[k]) + '</div></span></div>').join('');
+}
 
 /* ============================ старт ============================ */
 
