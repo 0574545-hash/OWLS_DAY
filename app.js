@@ -102,6 +102,32 @@ const daysLeft = iso => Math.round((parseKey(iso) - parseKey(dayKeyOf(new Date()
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const uid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
+/* ---------- ручной ввод времени и даты по маске ---------- */
+/** «ЧЧ:ММ» из любых цифр; лишнее отбрасывается. */
+function maskTime(v) {
+  const d = String(v).replace(/\D/g, '').slice(0, 4);
+  return d.length > 2 ? d.slice(0, 2) + ':' + d.slice(2) : d;
+}
+/** «ДД.ММ.ГГГГ» из любых цифр. */
+function maskDate(v) {
+  const d = String(v).replace(/\D/g, '').slice(0, 8);
+  if (d.length > 4) return d.slice(0, 2) + '.' + d.slice(2, 4) + '.' + d.slice(4);
+  if (d.length > 2) return d.slice(0, 2) + '.' + d.slice(2);
+  return d;
+}
+const timeOk = v => v === '' || /^([01]\d|2[0-3]):[0-5]\d$/.test(v);
+/** «ДД.ММ.ГГГГ» → «ГГГГ-ММ-ДД»; пустая строка — пусто; неверная дата — null. */
+function ruToIso(v) {
+  if (v === '') return '';
+  const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(v);
+  if (!m) return null;
+  const dd = +m[1], mm = +m[2], yy = +m[3];
+  const dt = new Date(yy, mm - 1, dd);
+  if (dt.getFullYear() !== yy || dt.getMonth() !== mm - 1 || dt.getDate() !== dd) return null;
+  return yy + '-' + pad2(mm) + '-' + pad2(dd);
+}
+const isoToRu = iso => iso ? iso.slice(8, 10) + '.' + iso.slice(5, 7) + '.' + iso.slice(0, 4) : '';
+
 /** Блок дня выводится из времени: до 12:00 — утро, до 18:00 — день, дальше вечер. */
 function phaseOfTime(time) {
   if (!time) return 'day';
@@ -863,7 +889,7 @@ function sheetCheck() {
       '<input id="i-text" type="text" data-f="item.text" maxlength="200" value="' + esc(F.item.text) + '" placeholder="Например, прогулка 30 минут"></div>' +
     '<div class="f2">' +
       '<div class="f"><label for="i-time">Время</label>' +
-        '<input id="i-time" type="time" data-f="item.time" value="' + esc(F.item.time) + '"></div>' +
+        '<input id="i-time" type="text" inputmode="numeric" data-f="item.time" data-mask="time" maxlength="5" placeholder="ЧЧ:ММ" value="' + esc(F.item.time) + '"></div>' +
       '<div class="f"><label for="i-mode">Периодичность</label>' +
         '<select id="i-mode" data-f="item.mode">' +
           '<option value="every"' + (F.item.mode === 'every' ? ' selected' : '') + '>Каждый день</option>' +
@@ -991,7 +1017,7 @@ function sheetWish() {
       '<div class="f"><label for="w-text">Название</label>' +
         '<input id="w-text" type="text" data-f="wish.text" maxlength="200" value="' + esc(F.wish.text) + '" placeholder="Например, курс по керамике"></div>' +
       '<div class="f"><label for="w-due">Дата</label>' +
-        '<input id="w-due" type="date" data-f="wish.due" value="' + esc(F.wish.due) + '"></div>' +
+        '<input id="w-due" type="text" inputmode="numeric" data-f="wish.due" data-mask="date" maxlength="10" placeholder="ДД.ММ.ГГГГ" value="' + esc(F.wish.due) + '"></div>' +
       '<div class="f"><label>Фото</label><div class="row" style="gap:12px">' + pic +
         '<button class="btn-ghost" data-act="pick-photo" data-target="draft">' +
           svg('photo', { size:16, color:'var(--muted)', width:1.5 }) + '<span>' + (F.wish.photo ? 'Заменить' : 'Выбрать фото') + '</span></button>' +
@@ -1304,6 +1330,7 @@ const ACTIONS = {
     if (!text) { toast('Введите название'); return; }
     const days = daysFromMode();
     if (!days.length) { toast('Выберите хотя бы один день'); return; }
+    if (!timeOk(F.item.time)) { toast('Время в формате ЧЧ:ММ, например 07:30'); return; }
     const phase = phaseOfTime(F.item.time);
     S.items[phase].push({ id: uid(phase), text, time: F.item.time, days, done:false });
     S.items[phase].sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
@@ -1391,9 +1418,11 @@ const ACTIONS = {
   'add-wish'() {
     const text = F.wish.text.trim();
     if (!text) { toast('Введите название'); return; }
+    const due = ruToIso(F.wish.due);
+    if (due === null) { toast('Дата в формате ДД.ММ.ГГГГ, например 31.12.2026'); return; }
     S.wishes.unshift({
       id: uid('w'), text, cat:'', note:'',
-      due: F.wish.due, done:false, photo: F.wish.photo,
+      due, done:false, photo: F.wish.photo,
     });
     if (!save()) { S.wishes[0].photo = ''; save(); }
     F.wish = { text:'', due:'', photo:'' };
@@ -1435,6 +1464,7 @@ const ACTIONS = {
     const from = E.phase;
     const idx = (S.items[from] || []).findIndex(x => x.id === E.id);
     if (idx < 0) { ACTIONS['edit-cancel'](); return; }
+    if (!timeOk(F.item.time)) { toast('Время в формате ЧЧ:ММ, например 07:30'); return; }
     const upd = { ...S.items[from][idx], text, time:F.item.time, days };
     const to = phaseOfTime(F.item.time);
     S.items[from].splice(idx, 1);
@@ -1521,7 +1551,7 @@ const ACTIONS = {
     if (!w) return;
     if (editing('wish') && E.id === w.id) { ACTIONS['edit-cancel'](); return; }
     E = { kind:'wish', id:w.id };
-    F.wish = { text:w.text, due:w.due || '', photo:w.photo || '' };
+    F.wish = { text:w.text, due:isoToRu(w.due || ''), photo:w.photo || '' };
     renderSheet(); $sheetBody.scrollTop = 0;
   },
   'save-wish'() {
@@ -1530,7 +1560,9 @@ const ACTIONS = {
     const w = S.wishes.find(x => x.id === E.id);
     if (!w) { ACTIONS['edit-cancel'](); return; }
     const oldPhoto = w.photo;
-    w.text = t; w.due = F.wish.due; w.photo = F.wish.photo;
+    const due = ruToIso(F.wish.due);
+    if (due === null) { toast('Дата в формате ДД.ММ.ГГГГ, например 31.12.2026'); return; }
+    w.text = t; w.due = due; w.photo = F.wish.photo;
     const ok = save();
     if (!ok) { w.photo = oldPhoto; save(); }
     F.wish = { text:'', due:'', photo:'' };
@@ -1645,7 +1677,19 @@ function setField(path, value) {
 
 document.addEventListener('input', e => {
   const el = e.target;
-  if (el.dataset.f) { setField(el.dataset.f, el.value); return; }
+  if (el.dataset.mask) {
+    const v = el.dataset.mask === 'time' ? maskTime(el.value) : maskDate(el.value);
+    if (v !== el.value) el.value = v;
+  }
+  if (el.dataset.f) {
+    setField(el.dataset.f, el.value);
+    /* время набрано целиком — подсказка о блоке меняется сразу, без перерисовки и потери клавиатуры */
+    if (el.dataset.f === 'item.time' && timeOk(el.value)) {
+      const b = document.querySelector('#sheet-body .note b');
+      if (b) b.textContent = PHASES.find(p => p.key === phaseOfTime(el.value)).name;
+    }
+    return;
+  }
   if (el.dataset.draft) { S.fields[el.dataset.draft] = el.value.slice(0, MAX_LEN); save(); }
 });
 
