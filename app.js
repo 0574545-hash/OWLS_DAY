@@ -286,7 +286,8 @@ function migrate(s) {
       days: Array.isArray(i.days) ? i.days : [...EVERYDAY],
     }));
   }
-  s.wishes = (s.wishes || []).map(w => ({ ...w, photo: w.photo || '', steps: Array.isArray(w.steps) ? w.steps : [] }));
+  s.wishes = (s.wishes || []).map(w => ({ ...w, photo: w.photo || '',
+    steps: (Array.isArray(w.steps) ? w.steps : []).map(x => ({ id: x.id || uid('st'), text: x.text || '', date: x.date || x.due || dayKeyOf(new Date()) })) }));
   s.intentions = (s.intentions || []).map(i => ({ id: i.id, text: i.text }));
   s.meds = (Array.isArray(s.meds) ? s.meds : []).map(m => ({ ...m, every: Number(m.every) || 1, start: m.start || dayKeyOf(new Date()) }));
   s.backupAt = s.backupAt || ''; s.edits = Number(s.edits) || 0; s.backupSnooze = s.backupSnooze || '';
@@ -603,17 +604,18 @@ function viewWish() {
       : '<span class="mono" aria-hidden="true">' + esc((w.text.trim()[0] || '•').toUpperCase()) + '</span>';
 
     return '<article class="card flush' + (w.done ? ' is-done' : '') + '">' +
-      '<div class="wish-top">' + pic +
+      '<div class="wish-top">' +
+        '<button class="wish-pic" data-act="wish-quick" data-id="' + w.id + '" aria-label="Записать шаг к цели">' + pic + '</button>' +
         '<div class="grow" style="display:flex;flex-direction:column;gap:8px">' +
-          '<span class="wish-t">' + esc(w.text) + '</span>' +
+          '<button class="wish-t" data-act="wish-steps" data-id="' + w.id + '">' + esc(w.text) + '</button>' +
           '<div class="row" style="flex-wrap:wrap;gap:8px">' +
             (w.cat ? '<span class="tag">' + esc(w.cat) + '</span>' : '') +
             (w.note ? '<span style="font-size:12px;color:var(--muted)">' + esc(w.note) + '</span>' : '') +
+            stepsHint(w) +
           '</div></div>' +
         '<button data-act="wish" data-id="' + w.id + '" style="flex:none;padding:4px" aria-label="Отметить исполненным">' +
           '<span class="circ' + (w.done ? ' on' : '') + '">' + (w.done ? svg('tick', { size:13, color:'#fff', width:3 }) : '') +
           '</span></button></div>' +
-      stepsBlock(w) +
       '<div class="wish-b">' + bottom +
         '<span class="row" style="gap:7px;flex:none">' + svg('cal', { size:14, color:'var(--faint)', width:1.5 }) +
           '<span style="font-size:12px;font-weight:600;color:var(--ink-2)">' + (w.due ? fmtDate(w.due) : '—') + '</span>' +
@@ -622,23 +624,56 @@ function viewWish() {
   return h;
 }
 
-/** Шаги к цели на карточке желания: отметить можно здесь, добавить — в настройках. */
-function stepsSorted(w) {
-  return (w.steps || []).slice().sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999'));
+/** Подпись на карточке: сколько шагов и когда последний. */
+function stepsHint(w) {
+  const st = w.steps || [];
+  if (!st.length) return '<span style="font-size:12px;color:var(--faint)">Шагов пока нет</span>';
+  const last = st.slice().sort((a, b) => b.date.localeCompare(a.date))[0];
+  return '<span style="font-size:12px;color:var(--muted)">' + st.length + ' ' + plural(st.length, 'шаг', 'шага', 'шагов') +
+    ' · последний ' + fmtDate(last.date) + '</span>';
 }
-function stepsBlock(w) {
-  const st = stepsSorted(w);
-  if (!st.length) return '';
-  const done = st.filter(x => x.done).length;
-  return '<div class="steps"><div class="steps-h"><span>Шаги к цели</span><span>' + done + ' из ' + st.length + '</span></div>' +
-    st.map(x => {
-      const left = x.due && !x.done ? daysLeft(x.due) : null;
-      return '<button class="step' + (x.done ? ' is-done' : '') + '" data-act="step" data-wish="' + w.id + '" data-id="' + x.id + '">' +
-        '<span class="box' + (x.done ? ' on' : '') + '">' + (x.done ? svg('tick', { size:12, color:'#fff', width:3 }) : '') + '</span>' +
-        '<span class="txt">' + esc(x.text) + '</span>' +
-        (x.due ? '<span class="dt' + (left !== null && left < 0 ? ' over' : '') + '">' + fmtDate(x.due) + '</span>' : '') +
-      '</button>';
-    }).join('') + '</div>';
+
+/* ============================ окно шагов к цели ============================ */
+/* Фото на карточке — быстрый ввод одного шага; название — журнал шагов с датами. */
+
+const $dlg = document.getElementById('dlg');
+let dlg = null;   // { mode:'quick'|'steps', id }
+
+function openDlg(mode, id) {
+  const w = S.wishes.find(x => x.id === id);
+  if (!w) return;
+  dlg = { mode, id };
+  F.step = '';
+  renderDlg();
+  $dlg.hidden = false;
+  requestAnimationFrame(() => { $dlg.classList.add('open'); const i = $dlg.querySelector('[data-f="step"]'); if (i) i.focus(); });
+}
+function closeDlg() {
+  if (!dlg) return;
+  dlg = null;
+  $dlg.classList.remove('open');
+  setTimeout(() => { $dlg.hidden = true; $dlg.querySelector('.dlg-body').innerHTML = ''; }, 220);
+}
+function renderDlg() {
+  if (!dlg) return;
+  const w = S.wishes.find(x => x.id === dlg.id);
+  if (!w) { closeDlg(); return; }
+  const input = '<div class="f"><label for="dlg-step">' + (dlg.mode === 'quick' ? 'Что сделано' : 'Новый шаг') + '</label>' +
+    '<input id="dlg-step" type="text" data-f="step" maxlength="200" value="' + esc(F.step) + '" placeholder="Например, отложил 20 000 ₽" enterkeyhint="done"></div>' +
+    '<button class="btn-add" data-act="dlg-add">Записать</button>';
+  let body;
+  if (dlg.mode === 'quick') {
+    body = '<span class="eyebrow">Шаг к цели</span><div class="dlg-title">' + esc(w.text) + '</div>' + input;
+  } else {
+    const st = (w.steps || []).slice().sort((a, b) => b.date.localeCompare(a.date));
+    body = '<span class="eyebrow">Шаги к цели · ' + st.length + '</span><div class="dlg-title">' + esc(w.text) + '</div>' +
+      (st.length ? '<div class="dlg-list">' + st.map(x =>
+        '<div class="mini"><span class="grow"><div class="m-t">' + esc(x.text) + '</div><div class="m-s">' + fmtDate(x.date) + '</div></span>' +
+        trashBtn('del-step', 'data-wish="' + w.id + '" data-id="' + x.id + '"', 'Удалить шаг') + '</div>').join('') + '</div>'
+        : '<div class="empty" style="padding:6px 0 10px">Шагов пока нет — запишите первый.</div>') +
+      input;
+  }
+  $dlg.querySelector('.dlg-body').innerHTML = body;
 }
 
 /* ---------- экран: дневник ---------- */
@@ -859,7 +894,7 @@ const F = {
   stop: '',
   set: '',
   wish: { text:'', due:'', photo:'' },
-  step: { text:'', due:'' },
+  step: '',
   med: { name:'', form:'tab', qty:'1', phase:'morning', meal:'after', every:'1' },
 };
 
@@ -1029,27 +1064,6 @@ function sheetSet() {
       : '<div class="empty">Пока пусто.</div>');
 }
 
-/** Шаги к цели — только у желания, которое сейчас правим. */
-function stepsForm() {
-  if (!editing('wish')) return '';
-  const w = S.wishes.find(x => x.id === E.id);
-  if (!w) return '';
-  const st = stepsSorted(w);
-  return '<div class="form"><span class="sec-t">Шаги к цели</span>' +
-    '<span class="note">Что нужно сделать по пути к «' + esc(w.text) + '». Отмечать шаги — на карточке в Wish list.</span>' +
-    '<div class="f"><label for="st-text">Шаг</label>' +
-      '<input id="st-text" type="text" data-f="step.text" maxlength="200" value="' + esc(F.step.text) + '" placeholder="Например, отложить 20 000 ₽"></div>' +
-    '<div class="f"><label for="st-due">Дата, если есть</label>' +
-      '<input id="st-due" type="text" inputmode="numeric" data-f="step.due" data-mask="date" maxlength="10" placeholder="ДД.ММ.ГГГГ" value="' + esc(F.step.due) + '"></div>' +
-    '<button class="btn-ghost wide" data-act="add-step" style="justify-content:center">Добавить шаг</button></div>' +
-    (st.length ? st.map(x =>
-      '<div class="mini"><span class="grow">' +
-        '<div class="m-t' + (x.done ? '" style="text-decoration:line-through;color:var(--faint)' : '') + '">' + esc(x.text) + '</div>' +
-        '<div class="m-s">' + (x.due ? 'до ' + fmtDate(x.due) : 'без даты') + (x.done ? ' · сделано' : '') + '</div></span>' +
-        trashBtn('del-step', 'data-wish="' + w.id + '" data-id="' + x.id + '"', 'Удалить шаг') + '</div>').join('')
-      : '<div class="empty">Шагов пока нет.</div>');
-}
-
 function sheetWish() {
   const pic = F.wish.photo
     ? '<img class="thumb-lg" src="' + F.wish.photo + '" alt="">'
@@ -1066,7 +1080,6 @@ function sheetWish() {
         (F.wish.photo ? '<button class="btn-ghost" data-act="drop-photo">Убрать</button>' : '') +
       '</div></div>' +
       formBtns('wish', 'add-wish', 'Добавить желание') + '</div>' +
-    stepsForm() +
     (S.wishes.length ? S.wishes.map(w => {
       const t = w.photo ? '<img class="thumb" src="' + w.photo + '" alt="">' : '<span class="thumb ph-empty">Нет<br>фото</span>';
       return '<div class="' + rowCls('wish', w.id) + (w.hidden ? ' off' : '') + '" data-act="edit-wish" data-id="' + w.id + '">' + t +
@@ -1275,6 +1288,7 @@ const ACTIONS = {
   /* навигация */
   tab(el) {
     cancelEdit(true);
+    closeDlg();
     const next = el.dataset.tab;
     if (next === S.tab) { $screen.scrollTo({ top:0, behavior: reducedMotion ? 'auto' : 'smooth' }); return; }
     const dir = TABS.findIndex(t => t.key === next) > TABS.findIndex(t => t.key === S.tab) ? 'l' : 'r';
@@ -1456,34 +1470,30 @@ const ACTIONS = {
   },
 
   /* настройки: желания */
-  /* шаги к цели */
-  step(el) {
-    const w = S.wishes.find(x => x.id === el.dataset.wish);
-    const x = w && (w.steps || []).find(y => y.id === el.dataset.id);
-    if (!x) return;
-    x.done = !x.done;
-    if (x.done) splashAt(el.querySelector('.box'));
-    commit();
-    if (x.done) animateOnce(document.querySelector('[data-act="step"][data-id="' + x.id + '"] .box'), 'pop');
-  },
-  'add-step'() {
-    if (!editing('wish')) return;
-    const w = S.wishes.find(x => x.id === E.id);
-    const text = F.step.text.trim();
-    if (!w) return;
-    if (!text) { toast('Введите шаг'); return; }
-    const due = ruToIso(F.step.due);
-    if (due === null) { toast('Дата в формате ДД.ММ.ГГГГ, например 31.12.2026'); return; }
-    (w.steps = w.steps || []).push({ id: uid('st'), text, due, done:false });
-    F.step = { text:'', due:'' };
-    commitSheet();
-    toast('Шаг добавлен');
+  /* шаги к цели — на карточке желания */
+  'wish-quick'(el) { openDlg('quick', el.dataset.id); },
+  'wish-steps'(el) { openDlg('steps', el.dataset.id); },
+  'dlg-close'() { closeDlg(); },
+  'dlg-add'() {
+    if (!dlg) return;
+    const w = S.wishes.find(x => x.id === dlg.id);
+    const text = (F.step || '').trim();
+    if (!w) { closeDlg(); return; }
+    if (!text) { toast('Напишите, что сделано'); return; }
+    (w.steps = w.steps || []).push({ id: uid('st'), text, date: dayKeyOf(new Date()) });
+    F.step = '';
+    S.edits = (S.edits || 0) + 1; save();
+    render(true);
+    if (dlg.mode === 'quick') { closeDlg(); toast('Шаг записан'); }
+    else renderDlg();
   },
   'del-step'(el) {
     const w = S.wishes.find(x => x.id === el.dataset.wish);
     if (!w) return;
     w.steps = (w.steps || []).filter(y => y.id !== el.dataset.id);
-    commitSheet();
+    S.edits = (S.edits || 0) + 1; save();
+    render(true);
+    renderDlg();
   },
   'pick-photo'(el) { photoTarget = el.dataset.target; $photo.click(); },
   'drop-photo'() { F.wish.photo = ''; renderSheet(); },
@@ -1515,7 +1525,7 @@ const ACTIONS = {
       else if (E.kind === 'stop') F.stop = '';
       else if (E.kind === 'intent') F.set = '';
       else if (E.kind === 'med') F.med = { name:'', form:'tab', qty:'1', phase:F.med.phase, meal:F.med.meal, every:'1' };
-      else if (E.kind === 'wish') { F.wish = { text:'', due:'', photo:'' }; F.step = { text:'', due:'' }; }
+      else if (E.kind === 'wish') F.wish = { text:'', due:'', photo:'' };
     }
     cancelEdit();
   },
@@ -1624,7 +1634,6 @@ const ACTIONS = {
     if (editing('wish') && E.id === w.id) { ACTIONS['edit-cancel'](); return; }
     E = { kind:'wish', id:w.id };
     F.wish = { text:w.text, due:isoToRu(w.due || ''), photo:w.photo || '' };
-    F.step = { text:'', due:'' };
     renderSheet(); $sheetBody.scrollTop = 0;
   },
   'save-wish'() {
@@ -1727,6 +1736,9 @@ $sheetBody.addEventListener('scroll', onAnyScroll, { passive: true });
 document.addEventListener('pointercancel', cancelDel);
 document.addEventListener('contextmenu', e => { if (e.target.closest('.del')) e.preventDefault(); });
 
+/* окно шагов: касание по затемнению закрывает */
+$dlg.addEventListener('click', e => { if (e.target === $dlg) closeDlg(); });
+
 /* делегирование: один слушатель на всё приложение */
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]');
@@ -1786,7 +1798,7 @@ document.addEventListener('keydown', e => {
   else if (f === 'set') ACTIONS['add-intent']();
   else if (f.startsWith('item.')) ACTIONS['add-item']();
   else if (f.startsWith('wish.')) ACTIONS['add-wish']();
-  else if (f.startsWith('step.')) ACTIONS['add-step']();
+  else if (f === 'step') ACTIONS['dlg-add']();
   else if (f.startsWith('med.')) ACTIONS['add-med']();
 });
 
