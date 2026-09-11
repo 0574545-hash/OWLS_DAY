@@ -286,7 +286,7 @@ function migrate(s) {
       days: Array.isArray(i.days) ? i.days : [...EVERYDAY],
     }));
   }
-  s.wishes = (s.wishes || []).map(w => ({ ...w, photo: w.photo || '' }));
+  s.wishes = (s.wishes || []).map(w => ({ ...w, photo: w.photo || '', steps: Array.isArray(w.steps) ? w.steps : [] }));
   s.intentions = (s.intentions || []).map(i => ({ id: i.id, text: i.text }));
   s.meds = (Array.isArray(s.meds) ? s.meds : []).map(m => ({ ...m, every: Number(m.every) || 1, start: m.start || dayKeyOf(new Date()) }));
   s.backupAt = s.backupAt || ''; s.edits = Number(s.edits) || 0; s.backupSnooze = s.backupSnooze || '';
@@ -613,12 +613,32 @@ function viewWish() {
         '<button data-act="wish" data-id="' + w.id + '" style="flex:none;padding:4px" aria-label="Отметить исполненным">' +
           '<span class="circ' + (w.done ? ' on' : '') + '">' + (w.done ? svg('tick', { size:13, color:'#fff', width:3 }) : '') +
           '</span></button></div>' +
+      stepsBlock(w) +
       '<div class="wish-b">' + bottom +
         '<span class="row" style="gap:7px;flex:none">' + svg('cal', { size:14, color:'var(--faint)', width:1.5 }) +
           '<span style="font-size:12px;font-weight:600;color:var(--ink-2)">' + (w.due ? fmtDate(w.due) : '—') + '</span>' +
         '</span></div></article>';
   }).join('') + '</div>';
   return h;
+}
+
+/** Шаги к цели на карточке желания: отметить можно здесь, добавить — в настройках. */
+function stepsSorted(w) {
+  return (w.steps || []).slice().sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999'));
+}
+function stepsBlock(w) {
+  const st = stepsSorted(w);
+  if (!st.length) return '';
+  const done = st.filter(x => x.done).length;
+  return '<div class="steps"><div class="steps-h"><span>Шаги к цели</span><span>' + done + ' из ' + st.length + '</span></div>' +
+    st.map(x => {
+      const left = x.due && !x.done ? daysLeft(x.due) : null;
+      return '<button class="step' + (x.done ? ' is-done' : '') + '" data-act="step" data-wish="' + w.id + '" data-id="' + x.id + '">' +
+        '<span class="box' + (x.done ? ' on' : '') + '">' + (x.done ? svg('tick', { size:12, color:'#fff', width:3 }) : '') + '</span>' +
+        '<span class="txt">' + esc(x.text) + '</span>' +
+        (x.due ? '<span class="dt' + (left !== null && left < 0 ? ' over' : '') + '">' + fmtDate(x.due) + '</span>' : '') +
+      '</button>';
+    }).join('') + '</div>';
 }
 
 /* ---------- экран: дневник ---------- */
@@ -839,6 +859,7 @@ const F = {
   stop: '',
   set: '',
   wish: { text:'', due:'', photo:'' },
+  step: { text:'', due:'' },
   med: { name:'', form:'tab', qty:'1', phase:'morning', meal:'after', every:'1' },
 };
 
@@ -1008,6 +1029,27 @@ function sheetSet() {
       : '<div class="empty">Пока пусто.</div>');
 }
 
+/** Шаги к цели — только у желания, которое сейчас правим. */
+function stepsForm() {
+  if (!editing('wish')) return '';
+  const w = S.wishes.find(x => x.id === E.id);
+  if (!w) return '';
+  const st = stepsSorted(w);
+  return '<div class="form"><span class="sec-t">Шаги к цели</span>' +
+    '<span class="note">Что нужно сделать по пути к «' + esc(w.text) + '». Отмечать шаги — на карточке в Wish list.</span>' +
+    '<div class="f"><label for="st-text">Шаг</label>' +
+      '<input id="st-text" type="text" data-f="step.text" maxlength="200" value="' + esc(F.step.text) + '" placeholder="Например, отложить 20 000 ₽"></div>' +
+    '<div class="f"><label for="st-due">Дата, если есть</label>' +
+      '<input id="st-due" type="text" inputmode="numeric" data-f="step.due" data-mask="date" maxlength="10" placeholder="ДД.ММ.ГГГГ" value="' + esc(F.step.due) + '"></div>' +
+    '<button class="btn-ghost wide" data-act="add-step" style="justify-content:center">Добавить шаг</button></div>' +
+    (st.length ? st.map(x =>
+      '<div class="mini"><span class="grow">' +
+        '<div class="m-t' + (x.done ? '" style="text-decoration:line-through;color:var(--faint)' : '') + '">' + esc(x.text) + '</div>' +
+        '<div class="m-s">' + (x.due ? 'до ' + fmtDate(x.due) : 'без даты') + (x.done ? ' · сделано' : '') + '</div></span>' +
+        trashBtn('del-step', 'data-wish="' + w.id + '" data-id="' + x.id + '"', 'Удалить шаг') + '</div>').join('')
+      : '<div class="empty">Шагов пока нет.</div>');
+}
+
 function sheetWish() {
   const pic = F.wish.photo
     ? '<img class="thumb-lg" src="' + F.wish.photo + '" alt="">'
@@ -1024,6 +1066,7 @@ function sheetWish() {
         (F.wish.photo ? '<button class="btn-ghost" data-act="drop-photo">Убрать</button>' : '') +
       '</div></div>' +
       formBtns('wish', 'add-wish', 'Добавить желание') + '</div>' +
+    stepsForm() +
     (S.wishes.length ? S.wishes.map(w => {
       const t = w.photo ? '<img class="thumb" src="' + w.photo + '" alt="">' : '<span class="thumb ph-empty">Нет<br>фото</span>';
       return '<div class="' + rowCls('wish', w.id) + (w.hidden ? ' off' : '') + '" data-act="edit-wish" data-id="' + w.id + '">' + t +
@@ -1413,6 +1456,35 @@ const ACTIONS = {
   },
 
   /* настройки: желания */
+  /* шаги к цели */
+  step(el) {
+    const w = S.wishes.find(x => x.id === el.dataset.wish);
+    const x = w && (w.steps || []).find(y => y.id === el.dataset.id);
+    if (!x) return;
+    x.done = !x.done;
+    if (x.done) splashAt(el.querySelector('.box'));
+    commit();
+    if (x.done) animateOnce(document.querySelector('[data-act="step"][data-id="' + x.id + '"] .box'), 'pop');
+  },
+  'add-step'() {
+    if (!editing('wish')) return;
+    const w = S.wishes.find(x => x.id === E.id);
+    const text = F.step.text.trim();
+    if (!w) return;
+    if (!text) { toast('Введите шаг'); return; }
+    const due = ruToIso(F.step.due);
+    if (due === null) { toast('Дата в формате ДД.ММ.ГГГГ, например 31.12.2026'); return; }
+    (w.steps = w.steps || []).push({ id: uid('st'), text, due, done:false });
+    F.step = { text:'', due:'' };
+    commitSheet();
+    toast('Шаг добавлен');
+  },
+  'del-step'(el) {
+    const w = S.wishes.find(x => x.id === el.dataset.wish);
+    if (!w) return;
+    w.steps = (w.steps || []).filter(y => y.id !== el.dataset.id);
+    commitSheet();
+  },
   'pick-photo'(el) { photoTarget = el.dataset.target; $photo.click(); },
   'drop-photo'() { F.wish.photo = ''; renderSheet(); },
   'add-wish'() {
@@ -1443,7 +1515,7 @@ const ACTIONS = {
       else if (E.kind === 'stop') F.stop = '';
       else if (E.kind === 'intent') F.set = '';
       else if (E.kind === 'med') F.med = { name:'', form:'tab', qty:'1', phase:F.med.phase, meal:F.med.meal, every:'1' };
-      else if (E.kind === 'wish') F.wish = { text:'', due:'', photo:'' };
+      else if (E.kind === 'wish') { F.wish = { text:'', due:'', photo:'' }; F.step = { text:'', due:'' }; }
     }
     cancelEdit();
   },
@@ -1552,6 +1624,7 @@ const ACTIONS = {
     if (editing('wish') && E.id === w.id) { ACTIONS['edit-cancel'](); return; }
     E = { kind:'wish', id:w.id };
     F.wish = { text:w.text, due:isoToRu(w.due || ''), photo:w.photo || '' };
+    F.step = { text:'', due:'' };
     renderSheet(); $sheetBody.scrollTop = 0;
   },
   'save-wish'() {
@@ -1713,6 +1786,7 @@ document.addEventListener('keydown', e => {
   else if (f === 'set') ACTIONS['add-intent']();
   else if (f.startsWith('item.')) ACTIONS['add-item']();
   else if (f.startsWith('wish.')) ACTIONS['add-wish']();
+  else if (f.startsWith('step.')) ACTIONS['add-step']();
   else if (f.startsWith('med.')) ACTIONS['add-med']();
 });
 
@@ -2127,7 +2201,7 @@ function xlImport(book) {
       const old = pickOld(pool, r[0], 'text');
       const isDone = cellYes(r[4]);
       return { id: old ? old.id : uid('w'), text: cellStr(r[0]), cat: cellStr(r[1]), note: cellStr(r[2]), due: cellDay(r[3]),
-        done: isDone, doneAt: isDone ? (old && old.doneAt) || today : undefined, photo: old ? old.photo || '' : '', hidden: old ? !!old.hidden : false };
+        done: isDone, doneAt: isDone ? (old && old.doneAt) || today : undefined, photo: old ? old.photo || '' : '', hidden: old ? !!old.hidden : false, steps: old ? old.steps || [] : [] };
     });
     done.push('желания ' + t.length);
   }
