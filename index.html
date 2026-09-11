@@ -186,6 +186,8 @@ main > *{flex:0 0 auto}
 #dlg.open .dlg-card{transform:none}
 .dlg-grip{width:36px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 2px}
 .dlg-title{font-family:var(--display);font-weight:700;font-size:16px;line-height:1.3;text-wrap:pretty}
+.dlg-body{display:flex;flex-direction:column;gap:14px}
+.dlg-body .eyebrow{margin-bottom:-8px}
 .dlg-list{margin:0 -20px;border-top:1px solid var(--line-soft)}
 .dlg-list .mini{padding:10px 20px}
 .dlg-body .f input{background:var(--bg)}
@@ -459,6 +461,6 @@ canvas#fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-in
   <button class="save" data-act="hard-reset">Сбросить кэш и перезагрузить</button>
 </div>
 <div class="toast" id="toast"></div>
-<script src="app.js?v=28"></script>
+<script src="app.js?v=29"></script>
 </body>
 </html>
