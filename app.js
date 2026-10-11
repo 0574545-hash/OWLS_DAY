@@ -507,42 +507,51 @@ function morphApply(snap, root) {
   });
 }
 
+/* Пересборка ряда кнопок без рывков: оставшиеся переезжают (FLIP), новые вырастают, ушедшие тают на месте. */
+function flipRebuild(box, sel, keyOf, rebuild) {
+  const go = !calm() && !!box.querySelector(sel);
+  const boxR = box.getBoundingClientRect();
+  const old = new Map([...box.querySelectorAll(sel)].map(b => [keyOf(b), { r: b.getBoundingClientRect(), el: b.cloneNode(true), on: b.classList.contains('on') }]));
+  rebuild();
+  if (!go) return;
+  const fresh = new Set();
+  for (const b of box.querySelectorAll(sel)) {
+    const k = keyOf(b), o = old.get(k), r = b.getBoundingClientRect();
+    fresh.add(k);
+    if (o) {
+      const dx = o.r.left - r.left, dy = o.r.top - r.top;
+      if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5)
+        b.animate([{ transform: 'translate(' + dx + 'px,' + dy + 'px)' }, { transform: 'none' }], { duration: 280, easing: 'cubic-bezier(.25,1,.5,1)' });
+      if (o.on !== b.classList.contains('on'))   // выбор переехал: кнопка мягко проявляется в новом виде
+        b.animate([{ opacity: 0.55, scale: '.94' }, { opacity: 1, scale: '1' }], { duration: 220, easing: 'cubic-bezier(.25,1,.5,1)' });
+    } else b.animate([{ opacity: 0, transform: 'scale(.6)' }, { opacity: 1, transform: 'none' }],
+      { duration: 280, delay: 60, fill: 'backwards', easing: 'cubic-bezier(.25,1,.5,1)' });
+  }
+  old.forEach((o, k) => {
+    if (fresh.has(k)) return;
+    const g = o.el;
+    g.removeAttribute('data-act');
+    Object.assign(g.style, { position: 'absolute', left: (o.r.left - boxR.left + box.scrollLeft) + 'px', top: (o.r.top - boxR.top + box.scrollTop) + 'px',
+      width: o.r.width + 'px', height: o.r.height + 'px', pointerEvents: 'none', flex: 'none', margin: '0' });
+    box.appendChild(g);
+    g.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.6)' }], { duration: 200, easing: 'ease-in', fill: 'forwards' }).onfinish = () => g.remove();
+  });
+}
+
 function renderNav() {
   const keys = activeTabs().map(t => t.key).join(',');
   if ($nav.dataset.keys !== keys) {                 // набор разделов поменялся — пересобираем меню
     /* Кнопки не прыгают: оставшиеся переезжают на новые места, новые вырастают, ушедшие тают. */
-    const was = $nav.dataset.keys !== undefined && !calm();
-    const navR = $nav.getBoundingClientRect();
-    const old = new Map([...$nav.querySelectorAll('button')].map(b => [b.dataset.tab, { r: b.getBoundingClientRect(), el: b.cloneNode(true) }]));
+    const first = $nav.dataset.keys === undefined;
     $nav.dataset.keys = keys;
-    $nav.innerHTML = activeTabs().map(t =>
-      '<button data-act="tab" data-tab="' + t.key + '">' +
-        svg(t.icon, { size:21, color:'var(--faint)', width:1.8 }) +
-        '<span>' + t.label + '</span><i class="ul"></i></button>').join('') +
-      '<i class="nav-ul" aria-hidden="true"></i>';
-    if (was) {
-      const fresh = new Set();
-      for (const b of $nav.querySelectorAll('button')) {
-        const o = old.get(b.dataset.tab);
-        fresh.add(b.dataset.tab);
-        if (o) {
-          const dx = o.r.left - b.getBoundingClientRect().left;
-          if (Math.abs(dx) > 0.5) b.animate([{ transform: 'translateX(' + dx + 'px)' }, { transform: 'none' }],
-            { duration: 280, easing: 'cubic-bezier(.25,1,.5,1)' });
-        } else b.animate([{ opacity: 0, transform: 'scale(.6)' }, { opacity: 1, transform: 'none' }],
-          { duration: 280, delay: 60, fill: 'backwards', easing: 'cubic-bezier(.25,1,.5,1)' });
-      }
-      old.forEach((o, k) => {
-        if (fresh.has(k)) return;
-        const g = o.el;
-        g.removeAttribute('data-act');
-        Object.assign(g.style, { position: 'absolute', left: (o.r.left - navR.left) + 'px', top: (o.r.top - navR.top) + 'px',
-          width: o.r.width + 'px', height: o.r.height + 'px', pointerEvents: 'none', flex: 'none' });
-        $nav.appendChild(g);
-        g.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.6)' }],
-          { duration: 200, easing: 'ease-in', fill: 'forwards' }).onfinish = () => g.remove();
-      });
-    }
+    const build = () => {
+      $nav.innerHTML = activeTabs().map(t =>
+        '<button data-act="tab" data-tab="' + t.key + '">' +
+          svg(t.icon, { size:21, color:'var(--faint)', width:1.8 }) +
+          '<span>' + t.label + '</span><i class="ul"></i></button>').join('') +
+        '<i class="nav-ul" aria-hidden="true"></i>';
+    };
+    if (first) build(); else flipRebuild($nav, 'button[data-tab]', b => b.dataset.tab, build);
   }
   for (const b of $nav.querySelectorAll('button')) {
     const on = b.dataset.tab === S.tab;
@@ -1387,16 +1396,29 @@ function sortRows(list, onChange) {
       .find(r => { const b = r.getBoundingClientRect(); return e.clientY < b.top + b.height / 2; }) || null;
     if (target ? target !== row.nextElementSibling : row.nextElementSibling) {
       const was = row.getBoundingClientRect().top;
+      const others = [...list.querySelectorAll('.sec-row')].filter(r => r !== row);
+      const before = others.map(r => r.getBoundingClientRect().top);
       if (target) list.insertBefore(row, target); else list.appendChild(row);
+      /* Соседи уступают место плавно, а не перескакивают. */
+      if (!calm()) others.forEach((r, i) => {
+        const dy = before[i] - r.getBoundingClientRect().top;
+        if (dy) r.animate([{ transform: 'translateY(' + dy + 'px)' }, { transform: 'none' }], { duration: 180, easing: 'cubic-bezier(.25,1,.5,1)' });
+      });
       y0 += row.getBoundingClientRect().top - was;   // строка не прыгает: отсчёт сдвигаем вместе с ней
       row.style.transform = 'translateY(' + (e.clientY - y0) + 'px)';
     }
   });
   const end = e => {
     if (e.pointerId !== pid || !row) return;
-    row.classList.remove('drag'); row.style.transform = '';
+    const r = row, dy = parseFloat((r.style.transform.match(/-?[\d.]+/) || [0])[0]) || 0;
     row = null; pid = null;
-    onChange([...list.querySelectorAll('.sec-row')].map(r => r.dataset.key));
+    const keys = [...list.querySelectorAll('.sec-row')].map(x => x.dataset.key);
+    /* Строка садится на своё место плавно, потом список пересобирается. */
+    r.style.transform = '';
+    if (dy && !calm()) {
+      r.animate([{ transform: 'translateY(' + dy + 'px)' }, { transform: 'none' }], { duration: 200, easing: 'cubic-bezier(.25,1,.5,1)' })
+        .onfinish = () => { r.classList.remove('drag'); onChange(keys); };
+    } else { r.classList.remove('drag'); onChange(keys); }
   };
   list.addEventListener('pointerup', end);
   list.addEventListener('pointercancel', end);
@@ -1407,9 +1429,13 @@ const SHEET_VIEWS = { secs:sheetSecs, check:sheetCheck, stop:sheetStop, meds:she
 let lastSheetTab = null;
 function renderSheet() {
   if (!sheetTabsOn().some(t => t.key === sheetTab)) sheetTab = 'secs';
-  $seg.innerHTML = sheetTabsOn().map(t =>
+  const segHtml = sheetTabsOn().map(t =>
     '<button data-act="sheet-tab" data-tab="' + t.key + '" class="' + (sheetTab === t.key ? 'on' : '') + '">' +
     t.label + '</button>').join('');
+  if ($seg.innerHTML !== segHtml) {
+    const build = () => { $seg.innerHTML = segHtml; };
+    if (sheetOpen) flipRebuild($seg, 'button[data-tab]', b => b.dataset.tab, build); else build();
+  }
   const isCash = sheetTab === 'cash';
   if (!isCash) cashSettingsDone();
   $sheetBody.classList.toggle('is-cash', isCash);
@@ -1649,8 +1675,13 @@ const ACTIONS = {
     S.off = TABS.map(t => t.key).filter(k => off.has(k));
     if (off.has(S.tab)) S.tab = activeTabs()[0].key;
     save();
-    renderSheet();
+    /* Переключатель доезжает сам, лист перерисовывается, когда движение кончилось. */
+    const on = !off.has(key);
+    el.classList.toggle('on', on);
+    el.setAttribute('aria-checked', String(on));
     render(false);
+    if (calm()) renderSheet();
+    else setTimeout(() => { if (sheetOpen && sheetTab === 'secs') renderSheet(); }, 230);
     const t = TABS.find(x => x.key === key);
     toast((off.has(key) ? 'Выключен: ' : 'Включён: ') + t.label);
   },
