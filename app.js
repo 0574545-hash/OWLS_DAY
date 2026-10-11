@@ -41,6 +41,7 @@ const TITLES = {
   meds:  { eyebrow:'Лекарства',   title:'Приём'          },
   wish:  { eyebrow:'Wish list',   title:'Желания'        },
   diary: { eyebrow:'Дневник дня', title:'Итог дня'       },
+  cash:  { eyebrow:'Расходы',     title:'OWLS Cash'      },
 };
 const TABS = [
   { key:'check', icon:'check', label:'Чек-лист'  },
@@ -48,6 +49,7 @@ const TABS = [
   { key:'diary', icon:'diary', label:'Дневник'   },
   { key:'wish',  icon:'wish',  label:'Wish list' },
   { key:'meds',  icon:'pill',  label:'Лекарства' },
+  { key:'cash',  icon:'cash',  label:'Расходы'   },
 ];
 
 const MED_FORMS = {
@@ -183,6 +185,7 @@ const ICON = {
   eyeoff:'<path d="M3 3l18 18M10.6 5.3A10 10 0 0 1 12 5.2c6 0 9.5 6.8 9.5 6.8a15 15 0 0 1-3.2 3.9M6.6 6.6C4 8.4 2.5 12 2.5 12s3.5 6.8 9.5 6.8c1.6 0 3-.4 4.2-1M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
   thumb:'<path d="M7 10.5V20H4.5a1 1 0 0 1-1-1v-7.5a1 1 0 0 1 1-1H7Zm0 0 3.8-7.2a1.8 1.8 0 0 1 3.3 1V9h5a2 2 0 0 1 2 2.4l-1.4 6.8A2.2 2.2 0 0 1 16.6 20H7"/>',
   thumbdn:'<g transform="rotate(180 12 12)"><path d="M7 10.5V20H4.5a1 1 0 0 1-1-1v-7.5a1 1 0 0 1 1-1H7Zm0 0 3.8-7.2a1.8 1.8 0 0 1 3.3 1V9h5a2 2 0 0 1 2 2.4l-1.4 6.8A2.2 2.2 0 0 1 16.6 20H7"/></g>',
+  cash:'<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
   pill:'<rect x="3" y="8.5" width="18" height="7" rx="3.5" transform="rotate(-45 12 12)"/><path d="m9.2 9.2 5.6 5.6"/>',
   photo:'<rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="10.5" r="1.8"/><path d="m4.5 17 4.8-4.2 3.4 3 2.6-2.2 4.2 3.4"/>',
 };
@@ -351,6 +354,26 @@ function streak() {
 
 const $screen = document.getElementById('screen');
 const $nav = document.getElementById('nav');
+const $cash = document.getElementById('cash');
+
+/* Расходы — живой OWLS Cash в рамке: всегда последняя версия, со своими настройками и данными.
+   Рамка создаётся при первом заходе и дальше живёт, чтобы не перезагружаться при смене вкладок.
+   На GitHub Pages адрес относительный — тот же домен, поэтому заставку Cash можно убрать. */
+const CASH_URL = /github\.io$/.test(location.hostname) ? '../OWLS_Cash/' : 'https://0574545-hash.github.io/OWLS_Cash/';
+function ensureCash() {
+  if ($cash.querySelector('iframe')) return;
+  const f = document.createElement('iframe');
+  f.src = CASH_URL;
+  f.title = 'OWLS Cash';
+  f.allow = 'microphone; web-share; clipboard-write';
+  const ready = () => {
+    try { f.contentDocument.getElementById('splash')?.remove(); } catch (e) {}
+    $cash.classList.add('ready');
+  };
+  f.addEventListener('load', ready);
+  setTimeout(ready, 6000);   // сеть медленная — показываем как есть
+  $cash.appendChild(f);
+}
 const $sheet = document.getElementById('sheet');
 const $sheetBody = document.getElementById('sheet-body');
 const $seg = document.getElementById('seg');
@@ -416,7 +439,8 @@ function switchScreen(dir) {
   render(false, true);
   if (reducedMotion) return;
   $screen.classList.remove('go-l', 'go-r');   // быстрые нажатия подряд: старый класс не должен остаться
-  animateOnce($screen, 'go-' + dir);
+  $cash.classList.remove('go-l', 'go-r');
+  animateOnce(S.tab === 'cash' ? $cash : $screen, 'go-' + dir);
   animateOnce(document.querySelector('.hd-t'), 'go');
 }
 
@@ -746,7 +770,7 @@ function viewDiary() {
         : '<div class="empty">Записей пока нет.</div>') + '</section>';
 }
 
-const VIEWS = { check:viewCheck, stop:viewStop, meds:viewMeds, wish:viewWish, diary:viewDiary };
+const VIEWS = { check:viewCheck, stop:viewStop, meds:viewMeds, wish:viewWish, diary:viewDiary, cash:() => '' };
 
 function render(keepScroll, cascade) {
   if ((S.off || []).includes(S.tab)) S.tab = activeTabs()[0].key;
@@ -756,6 +780,10 @@ function render(keepScroll, cascade) {
   document.getElementById('title').textContent = t.title;
   document.getElementById('today').textContent = headerDate();
   $screen.innerHTML = (VIEWS[S.tab] || viewCheck)();
+  const isCash = S.tab === 'cash';
+  document.getElementById('app').classList.toggle('cash', isCash);
+  $cash.hidden = !isCash;
+  if (isCash) ensureCash();
   renderNav();
   $screen.scrollTop = y;
   if (cascade && !reducedMotion) cascadeIn();
