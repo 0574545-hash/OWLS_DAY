@@ -183,6 +183,7 @@ const ICON = {
   trash:'<path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/>',
   eye:'<path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="3"/>',
   eyeoff:'<path d="M3 3l18 18M10.6 5.3A10 10 0 0 1 12 5.2c6 0 9.5 6.8 9.5 6.8a15 15 0 0 1-3.2 3.9M6.6 6.6C4 8.4 2.5 12 2.5 12s3.5 6.8 9.5 6.8c1.6 0 3-.4 4.2-1M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
+  grip:'<circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/>',
   thumb:'<path d="M7 10.5V20H4.5a1 1 0 0 1-1-1v-7.5a1 1 0 0 1 1-1H7Zm0 0 3.8-7.2a1.8 1.8 0 0 1 3.3 1V9h5a2 2 0 0 1 2 2.4l-1.4 6.8A2.2 2.2 0 0 1 16.6 20H7"/>',
   thumbdn:'<g transform="rotate(180 12 12)"><path d="M7 10.5V20H4.5a1 1 0 0 1-1-1v-7.5a1 1 0 0 1 1-1H7Zm0 0 3.8-7.2a1.8 1.8 0 0 1 3.3 1V9h5a2 2 0 0 1 2 2.4l-1.4 6.8A2.2 2.2 0 0 1 16.6 20H7"/></g>',
   cash:'<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
@@ -299,6 +300,7 @@ function migrate(s) {
   /* стоп-лист: было «сорвался да/нет», стало три положения — '' (не отмечено), 'up' (держусь), 'down' (сорвался) */
   s.stops = (s.stops || []).map(({ slipped, ...x }) => ({ ...x, mark: x.mark !== undefined ? x.mark : (slipped ? 'down' : '') }));
   s.off = Array.isArray(s.off) ? s.off.filter(k => TITLES[k]) : [];
+  s.order = Array.isArray(s.order) ? s.order.filter((k, i, a) => TITLES[k] && a.indexOf(k) === i) : [];
   if (!TITLES[s.tab]) s.tab = 'check';   // вкладки «Установки» больше нет
   s.v = 2;
   return s;
@@ -419,10 +421,15 @@ const headerDate = () => {
 };
 
 /** Включённые разделы; хотя бы один остаётся всегда. */
+/** Разделы в порядке пользователя (`S.order`, перетаскивание в «Разделах»); новые — в конец. */
+function orderedTabs() {
+  const ord = (S.order || []).map(k => TABS.find(t => t.key === k)).filter(Boolean);
+  return ord.concat(TABS.filter(t => !ord.includes(t)));
+}
 function activeTabs() {
   const off = S.off || [];
-  const t = TABS.filter(x => !off.includes(x.key));
-  return t.length ? t : TABS.slice(0, 1);
+  const t = orderedTabs().filter(x => !off.includes(x.key));
+  return t.length ? t : orderedTabs().slice(0, 1);
 }
 
 function renderNav() {
@@ -1189,18 +1196,62 @@ function sheetWish() {
 }
 
 /** Вкладка настроек раздела, который выключен, тоже прячется. */
-const sheetTabsOn = () => SHEET_TABS.filter(t => !(S.off || []).includes(t.key));
+/* Вкладки настроек: «Разделы», затем разделы в порядке меню, затем остальное («Установки», «Данные»). */
+const sheetTabsOn = () => {
+  const ord = orderedTabs().map(t => t.key);
+  const rank = (t, i) => t.key === 'secs' ? -1 : ord.includes(t.key) ? ord.indexOf(t.key) : 100 + i;
+  return SHEET_TABS.map((t, i) => ({ t, r: rank(t, i) }))
+    .filter(x => !(S.off || []).includes(x.t.key))
+    .sort((a, b) => a.r - b.r).map(x => x.t);
+};
 
 function sheetSecs() {
   const off = S.off || [];
-  return '<div class="form"><span class="sec-t">Разделы</span></div>' +
-    TABS.map(t => {
+  return '<div class="form"><span class="sec-t">Разделы</span></div><div class="sec-list">' +
+    orderedTabs().map(t => {
       const on = !off.includes(t.key);
-      return '<div class="mini">' + svg(t.icon, { size:19, color: on ? 'var(--accent)' : 'var(--faint)', width:1.7 }) +
+      return '<div class="mini sec-row" data-key="' + t.key + '">' +
+        '<span class="grip" aria-label="Перетащить">' + svg('grip', { size:16, color:'var(--faint)', width:1.8 }) + '</span>' +
+        svg(t.icon, { size:19, color: on ? 'var(--accent)' : 'var(--faint)', width:1.7 }) +
         '<span class="grow m-t">' + t.label + '</span>' +
         '<button class="tgl' + (on ? ' on' : '') + '" role="switch" aria-checked="' + on + '" aria-label="' + t.label +
         '" data-act="sec-toggle" data-key="' + t.key + '"><i></i></button></div>';
-    }).join('');
+    }).join('') + '</div>';
+}
+
+/* Перетаскивание строк за ручку: строка едет за пальцем, соседи меняются местами
+   на середине строки. По отпусканию — onChange(новый порядок ключей). */
+function sortRows(list, onChange) {
+  let row = null, pid = null, y0 = 0;
+  list.addEventListener('pointerdown', e => {
+    const grip = e.target.closest('.grip');
+    if (!grip || !e.isPrimary) return;
+    row = grip.closest('.sec-row');
+    pid = e.pointerId; y0 = e.clientY;
+    row.classList.add('drag');
+    try { grip.setPointerCapture(pid); } catch (_) {}
+    e.preventDefault();
+  });
+  list.addEventListener('pointermove', e => {
+    if (e.pointerId !== pid || !row) return;
+    row.style.transform = 'translateY(' + (e.clientY - y0) + 'px)';
+    const target = [...list.querySelectorAll('.sec-row')].filter(r => r !== row)
+      .find(r => { const b = r.getBoundingClientRect(); return e.clientY < b.top + b.height / 2; }) || null;
+    if (target ? target !== row.nextElementSibling : row.nextElementSibling) {
+      const was = row.getBoundingClientRect().top;
+      if (target) list.insertBefore(row, target); else list.appendChild(row);
+      y0 += row.getBoundingClientRect().top - was;   // строка не прыгает: отсчёт сдвигаем вместе с ней
+      row.style.transform = 'translateY(' + (e.clientY - y0) + 'px)';
+    }
+  });
+  const end = e => {
+    if (e.pointerId !== pid || !row) return;
+    row.classList.remove('drag'); row.style.transform = '';
+    row = null; pid = null;
+    onChange([...list.querySelectorAll('.sec-row')].map(r => r.dataset.key));
+  };
+  list.addEventListener('pointerup', end);
+  list.addEventListener('pointercancel', end);
 }
 
 const SHEET_VIEWS = { secs:sheetSecs, check:sheetCheck, stop:sheetStop, meds:sheetMeds, set:sheetSet, wish:sheetWish, cash:sheetCash, data:sheetData };
@@ -1216,6 +1267,14 @@ function renderSheet() {
   if (isCash && $sheetBody.querySelector('.cash-set iframe')) return;   // рамка уже открыта — не перезагружать
   $sheetBody.innerHTML = (SHEET_VIEWS[sheetTab] || sheetCheck)();
   if (isCash) { cashSetUsed = true; cashFrame('set', $sheetBody.querySelector('.cash-set')); }
+  const secList = $sheetBody.querySelector('.sec-list');
+  if (secList) sortRows(secList, keys => {
+    if (keys.join() === orderedTabs().map(t => t.key).join()) return;
+    S.order = keys;
+    save();
+    renderSheet();
+    render(true);
+  });
 }
 
 function openSheet() {
