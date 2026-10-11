@@ -156,7 +156,7 @@ main > *{flex:0 0 auto}
   transition:background-color .2s ease,border-color .2s ease}
 .sl.dn{background:var(--bad-bg);border-color:#EFC2C2}
 .sl.up{background:var(--ok-bg);border-color:#B9E2C6}
-.sl-i{position:absolute;top:50%;margin-top:-8px;width:16px;height:16px;opacity:.5;pointer-events:none;display:grid;place-items:center}
+.sl-i{position:absolute;top:50%;margin-top:-8px;width:16px;height:16px;opacity:.5;pointer-events:none;display:grid;place-items:center;transition:opacity .2s ease}
 .sl-i.l{left:11px}
 .sl-i.r{right:11px}
 .sl.dn .sl-i.l,.sl.up .sl-i.r{opacity:0}
@@ -166,6 +166,9 @@ main > *{flex:0 0 auto}
 .sl.dn .sl-k{transform:translateX(0)}
 .sl.up .sl-k{transform:translateX(86px)}
 .sl.dragging .sl-k{transition:none}
+/* Отметка: ручка подрастает свойством scale — transform занят сдвигом, иначе она дёргалась к краю. */
+.sl-k.pop{animation:sl-pop .36s cubic-bezier(.25,1,.5,1)}
+@keyframes sl-pop{40%{scale:1.18}}
 .sl-dot{width:6px;height:6px;border-radius:999px;background:var(--edge);display:block}
 /* переключатель раздела */
 .tgl{flex:none;width:50px;height:30px;border-radius:999px;background:var(--line);position:relative;transition:background-color .2s ease;-webkit-tap-highlight-color:transparent}
@@ -501,6 +504,6 @@ canvas#fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-in
   <button class="save" data-act="hard-reset">Сбросить кэш и перезагрузить</button>
 </div>
 <div class="toast" id="toast"></div>
-<script src="app.js?v=36"></script>
+<script src="app.js?v=37"></script>
 </body>
 </html>

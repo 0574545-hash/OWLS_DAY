@@ -678,7 +678,7 @@ function viewCheck() {
         svg(p.key, { size:17, color: p.key === 'morning' ? 'var(--accent)' : 'var(--ink)', width:1.5 }) +
         '<span class="sec-t grow">' + p.name + '</span>' +
         '<span style="font-size:11.5px;color:var(--muted)">' + d + ' / ' + list.length + '</span>' +
-      '</div><div class="bar"><i style="width:' + w + '%"></i></div></div>' +
+      '</div><div class="bar"><i data-bar="' + p.key + '" style="width:' + w + '%"></i></div></div>' +
       list.map(i =>
         '<button class="item' + (i.done ? ' is-done' : '') + '" data-act="item" data-phase="' + p.key + '" data-id="' + i.id + '">' +
           '<span class="box' + (i.done ? ' on' : '') + '">' + (i.done ? svg('tick', { size:13, color:'#fff', width:3 }) : '') + '</span>' +
@@ -756,7 +756,7 @@ function viewMeds() {
         svg(p.key, { size:17, color: p.key === 'morning' ? 'var(--accent)' : 'var(--ink)', width:1.5 }) +
         '<span class="sec-t grow">' + p.name + '</span>' +
         '<span style="font-size:11.5px;color:var(--muted)">' + d + ' / ' + list.length + '</span>' +
-      '</div><div class="bar"><i style="width:' + Math.round(d / list.length * 100) + '%"></i></div></div>' +
+      '</div><div class="bar"><i data-bar="' + p.key + '" style="width:' + Math.round(d / list.length * 100) + '%"></i></div></div>' +
       list.map(m =>
         '<button class="item' + (m.done ? ' is-done' : '') + '" data-act="med" data-id="' + m.id + '" style="min-height:58px">' +
           '<span class="box' + (m.done ? ' on' : '') + '">' + (m.done ? svg('tick', { size:13, color:'#fff', width:3 }) : '') + '</span>' +
@@ -916,6 +916,46 @@ function viewDiary() {
 
 const VIEWS = { check:viewCheck, stop:viewStop, meds:viewMeds, wish:viewWish, diary:viewDiary, cash:() => '' };
 
+/* Перенос через перерисовку: экран собирается заново, и полоски с ползунками
+   прыгали бы в новое положение. Запоминаем, где они были, ставим новые туда же
+   без перехода и отпускаем — CSS-переход довозит их до нового значения. */
+function carrySnap() {
+  if (calm()) return null;
+  const m = new Map();
+  $screen.querySelectorAll('.bar i[data-bar]').forEach(el => m.set('b' + el.dataset.bar, { width: getComputedStyle(el).width }));
+  $screen.querySelectorAll('.sl[data-id]').forEach(el => {
+    const cs = getComputedStyle(el);
+    m.set('s' + el.dataset.id, { bg: cs.backgroundColor, bc: cs.borderColor, t: getComputedStyle(el.querySelector('.sl-k')).transform });
+  });
+  const mo = $screen.querySelector('.mood.on i');
+  if (mo) { const cs = getComputedStyle(mo); m.set('mood', { i: mo.parentElement.dataset.i, bg: cs.backgroundColor, bc: cs.borderColor }); }
+  else if ($screen.querySelector('.mood')) m.set('mood', { i: null });
+  return m;
+}
+function carryApply(m) {
+  if (!m || !m.size) return;
+  const set = [];   // [элемент, свойство, прежнее значение]
+  $screen.querySelectorAll('.bar i[data-bar]').forEach(el => { const o = m.get('b' + el.dataset.bar); if (o) set.push([el, 'width', o.width]); });
+  $screen.querySelectorAll('.sl[data-id]').forEach(el => {
+    const o = m.get('s' + el.dataset.id);
+    if (!o) return;
+    set.push([el.querySelector('.sl-k'), 'transform', o.t], [el, 'backgroundColor', o.bg], [el, 'borderColor', o.bc]);
+  });
+  const to = set.map(([el, p, v]) => { const t = el.style[p]; el.style.transition = 'none'; el.style[p] = v; return t; });
+  void $screen.offsetWidth;
+  set.forEach(([el, p], i) => { el.style.transition = ''; el.style[p] = to[i]; });
+  /* Настроение: новый кружок наливается цветом, прежний плавно гаснет. */
+  const mo = m.get('mood'), on = $screen.querySelector('.mood.on');
+  if (mo && on && mo.i !== on.dataset.i) {
+    on.querySelector('i').animate([{ transform: 'scale(.55)', opacity: 0.5 }, { transform: 'scale(1.08)', offset: 0.6 }, { transform: 'scale(1)', opacity: 1 }],
+      { duration: 380, easing: 'cubic-bezier(.25,1,.5,1)' });
+    on.querySelector('span').animate([{ opacity: 0.4 }, { opacity: 1 }], { duration: 300 });
+    const was = mo.i !== null && $screen.querySelector('.mood[data-i="' + mo.i + '"] i');
+    if (was) { const cs = getComputedStyle(was);
+      was.animate([{ backgroundColor: mo.bg, borderColor: mo.bc }, { backgroundColor: cs.backgroundColor, borderColor: cs.borderColor }], { duration: 280, easing: 'ease-out' }); }
+  }
+}
+
 let lastTab = null;
 function render(keepScroll, cascade) {
   if ((S.off || []).includes(S.tab)) S.tab = activeTabs()[0].key;
@@ -924,10 +964,12 @@ function render(keepScroll, cascade) {
   document.getElementById('eyebrow').textContent = t.eyebrow;
   document.getElementById('title').textContent = t.title;
   document.getElementById('today').textContent = headerDate();
-  const snap = lastTab === S.tab ? morphSnap($screen) : null;
+  const same = lastTab === S.tab;
+  const snap = same ? morphSnap($screen) : null, carry = same ? carrySnap() : null;
   lastTab = S.tab;
   $screen.innerHTML = (VIEWS[S.tab] || viewCheck)();
   morphApply(snap, $screen);
+  carryApply(carry);
   const isCash = S.tab === 'cash';
   document.getElementById('app').classList.toggle('cash', isCash);
   $cash.hidden = !isCash;
