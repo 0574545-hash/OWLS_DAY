@@ -1193,8 +1193,7 @@ const sheetTabsOn = () => SHEET_TABS.filter(t => !(S.off || []).includes(t.key))
 
 function sheetSecs() {
   const off = S.off || [];
-  return '<div class="form"><span class="sec-t">Разделы</span>' +
-      '<span class="note">Выключенный раздел пропадает из меню внизу и из настроек. Данные в нём сохраняются: включите обратно — всё на месте.</span></div>' +
+  return '<div class="form"><span class="sec-t">Разделы</span></div>' +
     TABS.map(t => {
       const on = !off.includes(t.key);
       return '<div class="mini">' + svg(t.icon, { size:19, color: on ? 'var(--accent)' : 'var(--faint)', width:1.7 }) +
