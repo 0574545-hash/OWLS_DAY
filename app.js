@@ -408,6 +408,26 @@ function cashSettingsDone() {
   const f = $cash.querySelector('iframe');
   if (f) { $cash.classList.remove('ready'); try { f.contentWindow.location.reload(); } catch (e) { f.src = f.src; } }
 }
+/* Cash обновился, пока трекер висел в памяти телефона: рамка живёт со старым кодом.
+   При возвращении в приложение сверяем версию его sw.js с загруженной и перезагружаем рамку —
+   только если в ней не идёт запись голоса. */
+function cashFreshen() {
+  const f = $cash.querySelector('iframe');
+  if (!f) return;
+  let have = '', busy = false;
+  try {
+    const d = f.contentDocument;
+    have = (d.querySelector('script[src*="js/app.js"]')?.src.match(/v=(\d+)/) || [])[1] || '';
+    busy = !!d.querySelector('.mic.on, .overlay');
+  } catch (e) { return; }
+  if (!have || busy) return;
+  fetch(CASH_URL + 'sw.js', { cache: 'no-store' }).then(r => r.text()).then(t => {
+    const live = (t.match(/owls-cash-v(\d+)/) || [])[1];
+    if (live && live !== have) { $cash.classList.remove('ready'); try { f.contentWindow.location.reload(); } catch (e) {} }
+  }).catch(() => {});
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) cashFreshen(); });
+
 function sheetCash() {
   return '<div class="cash-set"><span class="cash-wait">Открываю настройки OWLS Cash…</span></div>';
 }
