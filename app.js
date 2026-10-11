@@ -452,15 +452,97 @@ function activeTabs() {
   return t.length ? t : orderedTabs().slice(0, 1);
 }
 
+/* ---------- плавные появления и исчезновения при перерисовке ----------
+   Живые элементы — с data-k или строки настроек .mini[data-id]. Перед перерисовкой —
+   слепок (morphSnap), после — сравнение (morphApply): пропавшие сворачиваются копией на
+   прежнем месте, новые раскрываются, скрытые и вернувшиеся плавно меняют прозрачность. */
+const MORPH_MS = 220;
+const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const MORPH_SEL = '[data-k], .mini[data-id]';
+const mKey = el => el.dataset.k || (el.dataset.id ? 'm-' + el.dataset.id : undefined);
+const mUp = (el, root) => { for (let p = el.parentElement; p && p !== root; p = p.parentElement) if (p.matches(MORPH_SEL)) return p; return null; };
+const mSib = (el, dir) => { for (let x = el[dir]; x; x = x[dir]) if (x.matches && x.matches(MORPH_SEL)) return mKey(x); return null; };
+function morphSnap(root) {
+  if (!root || calm()) return null;
+  const list = [...root.querySelectorAll(MORPH_SEL)].map(el => {
+    const up = mUp(el, root);
+    return { k: mKey(el), clone: el.cloneNode(true), h: el.offsetHeight, cs: getComputedStyle(el),
+             up: up ? mKey(up) : null, prev: mSib(el, 'previousElementSibling'), next: mSib(el, 'nextElementSibling'),
+             gap: parseFloat(getComputedStyle(el.parentElement).rowGap) || 0, off: el.classList.contains('off') };
+  });
+  return { list, keys: new Set(list.map(x => x.k)) };
+}
+function boxFrames(h, cs, gap, open) {
+  const shut = { height: '0px', paddingTop: '0px', paddingBottom: '0px', marginBottom: (-gap) + 'px', opacity: 0 };
+  const full = { height: h + 'px', paddingTop: cs.paddingTop, paddingBottom: cs.paddingBottom, marginBottom: '0px', opacity: 1 };
+  return open ? [shut, full] : [full, shut];
+}
+function morphApply(snap, root) {
+  if (!snap || !root) return;
+  const now = new Map([...root.querySelectorAll(MORPH_SEL)].map(el => [mKey(el), el]));
+  snap.list.forEach(x => {
+    if (now.has(x.k) || (x.up && !now.has(x.up))) return;   // родитель тоже ушёл — анимирует он
+    const c = x.clone;
+    c.removeAttribute('data-k'); c.removeAttribute('data-id'); c.removeAttribute('data-act');
+    c.style.pointerEvents = 'none';
+    c.style.overflow = 'hidden';
+    const prev = x.prev && now.get(x.prev), next = x.next && now.get(x.next), up = x.up ? now.get(x.up) : root;
+    if (prev) prev.after(c); else if (next) next.before(c); else if (up) up.appendChild(c); else return;
+    c.animate(boxFrames(x.h, x.cs, x.gap, false), { duration: MORPH_MS, easing: 'cubic-bezier(.4,0,.2,1)' }).onfinish = () => c.remove();
+  });
+  now.forEach((el, k) => {
+    const old = snap.list.find(x => x.k === k);
+    if (old) {
+      const off = el.classList.contains('off');
+      if (off !== old.off) el.querySelectorAll('.m-t, .thumb').forEach(t =>
+        t.animate([{ opacity: off ? 1 : 0.45 }, { opacity: off ? 0.45 : 1 }], { duration: MORPH_MS }));
+      return;
+    }
+    const up = mUp(el, root);
+    if (up && !snap.keys.has(mKey(up))) return;
+    const cs = getComputedStyle(el), gap = parseFloat(getComputedStyle(el.parentElement).rowGap) || 0;
+    el.style.overflow = 'hidden';
+    el.animate(boxFrames(el.offsetHeight, cs, gap, true), { duration: MORPH_MS + 40, easing: 'cubic-bezier(.25,1,.5,1)' })
+      .onfinish = () => { el.style.overflow = ''; };
+  });
+}
+
 function renderNav() {
   const keys = activeTabs().map(t => t.key).join(',');
   if ($nav.dataset.keys !== keys) {                 // набор разделов поменялся — пересобираем меню
+    /* Кнопки не прыгают: оставшиеся переезжают на новые места, новые вырастают, ушедшие тают. */
+    const was = $nav.dataset.keys !== undefined && !calm();
+    const navR = $nav.getBoundingClientRect();
+    const old = new Map([...$nav.querySelectorAll('button')].map(b => [b.dataset.tab, { r: b.getBoundingClientRect(), el: b.cloneNode(true) }]));
     $nav.dataset.keys = keys;
     $nav.innerHTML = activeTabs().map(t =>
       '<button data-act="tab" data-tab="' + t.key + '">' +
         svg(t.icon, { size:21, color:'var(--faint)', width:1.8 }) +
         '<span>' + t.label + '</span><i class="ul"></i></button>').join('') +
       '<i class="nav-ul" aria-hidden="true"></i>';
+    if (was) {
+      const fresh = new Set();
+      for (const b of $nav.querySelectorAll('button')) {
+        const o = old.get(b.dataset.tab);
+        fresh.add(b.dataset.tab);
+        if (o) {
+          const dx = o.r.left - b.getBoundingClientRect().left;
+          if (Math.abs(dx) > 0.5) b.animate([{ transform: 'translateX(' + dx + 'px)' }, { transform: 'none' }],
+            { duration: 280, easing: 'cubic-bezier(.25,1,.5,1)' });
+        } else b.animate([{ opacity: 0, transform: 'scale(.6)' }, { opacity: 1, transform: 'none' }],
+          { duration: 280, delay: 60, fill: 'backwards', easing: 'cubic-bezier(.25,1,.5,1)' });
+      }
+      old.forEach((o, k) => {
+        if (fresh.has(k)) return;
+        const g = o.el;
+        g.removeAttribute('data-act');
+        Object.assign(g.style, { position: 'absolute', left: (o.r.left - navR.left) + 'px', top: (o.r.top - navR.top) + 'px',
+          width: o.r.width + 'px', height: o.r.height + 'px', pointerEvents: 'none', flex: 'none' });
+        $nav.appendChild(g);
+        g.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.6)' }],
+          { duration: 200, easing: 'ease-in', fill: 'forwards' }).onfinish = () => g.remove();
+      });
+    }
   }
   for (const b of $nav.querySelectorAll('button')) {
     const on = b.dataset.tab === S.tab;
@@ -834,6 +916,7 @@ function viewDiary() {
 
 const VIEWS = { check:viewCheck, stop:viewStop, meds:viewMeds, wish:viewWish, diary:viewDiary, cash:() => '' };
 
+let lastTab = null;
 function render(keepScroll, cascade) {
   if ((S.off || []).includes(S.tab)) S.tab = activeTabs()[0].key;
   const y = keepScroll ? $screen.scrollTop : 0;
@@ -841,7 +924,10 @@ function render(keepScroll, cascade) {
   document.getElementById('eyebrow').textContent = t.eyebrow;
   document.getElementById('title').textContent = t.title;
   document.getElementById('today').textContent = headerDate();
+  const snap = lastTab === S.tab ? morphSnap($screen) : null;
+  lastTab = S.tab;
   $screen.innerHTML = (VIEWS[S.tab] || viewCheck)();
+  morphApply(snap, $screen);
   const isCash = S.tab === 'cash';
   document.getElementById('app').classList.toggle('cash', isCash);
   $cash.hidden = !isCash;
@@ -1276,6 +1362,7 @@ function sortRows(list, onChange) {
 
 const SHEET_VIEWS = { secs:sheetSecs, check:sheetCheck, stop:sheetStop, meds:sheetMeds, set:sheetSet, wish:sheetWish, cash:sheetCash, data:sheetData };
 
+let lastSheetTab = null;
 function renderSheet() {
   if (!sheetTabsOn().some(t => t.key === sheetTab)) sheetTab = 'secs';
   $seg.innerHTML = sheetTabsOn().map(t =>
@@ -1285,7 +1372,10 @@ function renderSheet() {
   if (!isCash) cashSettingsDone();
   $sheetBody.classList.toggle('is-cash', isCash);
   if (isCash && $sheetBody.querySelector('.cash-set iframe')) return;   // рамка уже открыта — не перезагружать
+  const snap = sheetOpen && lastSheetTab === sheetTab ? morphSnap($sheetBody) : null;
+  lastSheetTab = sheetTab;
   $sheetBody.innerHTML = (SHEET_VIEWS[sheetTab] || sheetCheck)();
+  morphApply(snap, $sheetBody);
   if (isCash) { cashSetUsed = true; cashFrame('set', $sheetBody.querySelector('.cash-set')); }
   const secList = $sheetBody.querySelector('.sec-list');
   if (secList) sortRows(secList, keys => {
@@ -1495,7 +1585,17 @@ const ACTIONS = {
   },
   settings() { openSheet(); },
   'close-settings'() { closeSheet(); },
-  'sheet-tab'(el) { cancelEdit(true); sheetTab = el.dataset.tab; renderSheet(); },
+  'sheet-tab'(el) {
+    cancelEdit(true);
+    const keys = sheetTabsOn().map(t => t.key);
+    const dir = keys.indexOf(el.dataset.tab) > keys.indexOf(sheetTab) ? 1 : -1;
+    const same = el.dataset.tab === sheetTab;
+    sheetTab = el.dataset.tab;
+    renderSheet();
+    /* Содержимое вкладки въезжает со стороны нажатой — как экраны внизу. */
+    if (!same && !calm()) $sheetBody.animate([{ opacity: 0, transform: 'translateX(' + (dir * 22) + 'px)' }, { opacity: 1, transform: 'none' }],
+      { duration: 240, easing: 'cubic-bezier(.2,.7,.2,1)' });
+  },
   'sec-toggle'(el) {
     const key = el.dataset.key;
     const off = new Set(S.off || []);
@@ -2351,7 +2451,7 @@ function backupBanner() {
   if (!backupDue()) return '';
   const ago = backupDaysAgo();
   const title = ago === null ? 'Копии данных ещё не было' : 'Копии не было ' + ago + ' ' + plural(ago, 'день', 'дня', 'дней');
-  return '<div class="card pad bk"><div class="row" style="gap:12px;align-items:flex-start">' +
+  return '<div class="card pad bk" data-k="bk"><div class="row" style="gap:12px;align-items:flex-start">' +
     '<span class="bk-ic">' + svg('cal', { size:18, color:'var(--accent)', width:1.6 }) + '</span>' +
     '<div class="grow"><div class="sec-t">' + title + '</div>' +
     '<div class="hint">Файл в iCloud Drive вернёт всё на новом телефоне.</div></div></div>' +
