@@ -41,7 +41,7 @@ const TITLES = {
   meds:  { eyebrow:'Лекарства',   title:'Приём'          },
   wish:  { eyebrow:'Wish list',   title:'Желания'        },
   diary: { eyebrow:'Дневник дня', title:'Итог дня'       },
-  cash:  { eyebrow:'Расходы',     title:'OWLS Cash'      },
+  cash:  { eyebrow:'Расходы',     title:'Деньги'         },
 };
 const TABS = [
   { key:'check', icon:'check', label:'Чек-лист'  },
@@ -356,23 +356,58 @@ const $screen = document.getElementById('screen');
 const $nav = document.getElementById('nav');
 const $cash = document.getElementById('cash');
 
-/* Расходы — живой OWLS Cash в рамке: всегда последняя версия, со своими настройками и данными.
+/* Расходы — живой OWLS Cash в рамке: всегда последняя версия, данные свои (ключ owls-cash:v1).
    Рамка создаётся при первом заходе и дальше живёт, чтобы не перезагружаться при смене вкладок.
-   На GitHub Pages адрес относительный — тот же домен, поэтому заставку Cash можно убрать. */
-const CASH_URL = /github\.io$/.test(location.hostname) ? '../OWLS_Cash/' : 'https://0574545-hash.github.io/OWLS_Cash/';
-function ensureCash() {
-  if ($cash.querySelector('iframe')) return;
+   Рядом с OWLS_DAY (GitHub Pages) адрес относительный — тот же домен, поэтому в рамку можно подложить стиль:
+   убрать заставку и шапку Cash (шапка общая, трекера), подогнать два виджета под высоту кольца.
+   Настройки Cash — вторая рамка во вкладке «Расходы» общего листа настроек (cashFrame('set')). */
+const CASH_URL = location.pathname.includes('/OWLS_DAY/') ? '../OWLS_Cash/' : 'https://0574545-hash.github.io/OWLS_Cash/';
+const RING_H = 116;   // высота карточки с кольцом при подсказке в две строки
+const CASH_CSS = {
+  main: '.head:has(.brand[data-act="settings"]){display:none!important}' +
+        '.screen:has(.brand[data-act="settings"]){padding-top:18px!important}' +
+        '.sums .card.sum{height:' + RING_H + 'px!important;min-height:0!important;overflow:hidden;' +
+          'padding-top:12px!important;padding-bottom:12px!important;gap:5px!important}',
+  set:  '.set-h{display:none!important}.overlay{padding-top:18px!important}',
+};
+function cashFrame(mode, box, onReady) {
   const f = document.createElement('iframe');
   f.src = CASH_URL;
-  f.title = 'OWLS Cash';
+  f.title = mode === 'set' ? 'Настройки OWLS Cash' : 'OWLS Cash';
   f.allow = 'microphone; web-share; clipboard-write';
+  let done = false;
   const ready = () => {
-    try { f.contentDocument.getElementById('splash')?.remove(); } catch (e) {}
-    $cash.classList.add('ready');
+    if (done) return;
+    try {
+      const d = f.contentDocument;
+      d.getElementById('splash')?.remove();
+      const st = d.createElement('style');
+      st.textContent = CASH_CSS[mode];
+      d.head.appendChild(st);
+      if (mode === 'set') d.querySelector('[data-act="settings"]')?.click();
+    } catch (e) {}   // другой домен (локальная проверка) — показываем как есть
+    done = true;
+    box.classList.add('ready');
+    if (onReady) onReady();
   };
-  f.addEventListener('load', ready);
+  f.addEventListener('load', () => { done = false; box.classList.remove('ready'); ready(); });
   setTimeout(ready, 6000);   // сеть медленная — показываем как есть
-  $cash.appendChild(f);
+  box.appendChild(f);
+  return f;
+}
+function ensureCash() {
+  if (!$cash.querySelector('iframe')) cashFrame('main', $cash);
+}
+/* Настройки меняли данные в другой рамке — главная перечитывает их, иначе затрёт своими. */
+let cashSetUsed = false;
+function cashSettingsDone() {
+  if (!cashSetUsed) return;
+  cashSetUsed = false;
+  const f = $cash.querySelector('iframe');
+  if (f) { $cash.classList.remove('ready'); try { f.contentWindow.location.reload(); } catch (e) { f.src = f.src; } }
+}
+function sheetCash() {
+  return '<div class="cash-set"><span class="cash-wait">Открываю настройки OWLS Cash…</span></div>';
 }
 const $sheet = document.getElementById('sheet');
 const $sheetBody = document.getElementById('sheet-body');
@@ -563,7 +598,7 @@ function stopSlider(x) {
 }
 function viewStop() {
   const stops = vis(S.stops);
-  if (!stops.length) return emptyHint('Стоп-лист пуст.');
+  if (!stops.length) return ringCard('stop', 0, 0, '0 пунктов', 'Добавьте то, от чего держитесь, в настройках.') + emptyHint('Стоп-лист пуст.');
   const up = stops.filter(x => x.mark === 'up').length;
   const down = stops.filter(x => x.mark === 'down').length;
   const open = stops.length - up - down;
@@ -591,12 +626,12 @@ function viewStop() {
 
 /* ---------- экран: лекарства ---------- */
 function viewMeds() {
-  if (!vis(S.meds).length) return emptyHint('Лекарств пока нет.');
+  if (!vis(S.meds).length) return ringCard('meds', 0, 0, '0 приёмов', 'Добавьте лекарства в настройках.') + emptyHint('Лекарств пока нет.');
   const today = S.meds.filter(medToday);
   if (!today.length) {
     const soon = S.meds.map(m => ({ m, d: medNextIn(m) })).sort((a, b) => a.d - b.d)[0];
-    return '<div class="dash">На сегодня приёмов нет.' + (soon ? '<br><span style="color:var(--muted)">Ближайший — ' + esc(soon.m.name) +
-      ', через ' + soon.d + ' ' + plural(soon.d, 'день', 'дня', 'дней') + '.</span>' : '') + '</div>';
+    return ringCard('meds', 0, 0, 'Сегодня без приёмов',
+      soon ? 'Ближайший — ' + esc(soon.m.name) + ', через ' + soon.d + ' ' + plural(soon.d, 'день', 'дня', 'дней') + '.' : 'На сегодня приёмов нет.');
   }
   const taken = today.filter(m => m.done).length, total = today.length;
   const next = PHASES.flatMap(p => today.filter(m => m.phase === p.key)).find(m => !m.done);
@@ -628,7 +663,7 @@ function viewMeds() {
 /* ---------- экран: желания ---------- */
 function viewWish() {
   const wishes = vis(S.wishes);
-  if (!wishes.length) return emptyHint('Список желаний пуст.');
+  if (!wishes.length) return ringCard('wish', 0, 0, '0 желаний', 'Добавьте первое желание в настройках.') + emptyHint('Список желаний пуст.');
   const doneN = wishes.filter(w => w.done).length;
   const pct = doneN / wishes.length;
   const up = wishes.filter(w => !w.done && w.due)
@@ -941,6 +976,7 @@ const SHEET_TABS = [
   { key:'meds',  label:'Лекарства' },
   { key:'set',   label:'Установки' },
   { key:'wish',  label:'Желания'   },
+  { key:'cash',  label:'Расходы'   },
   { key:'data',  label:'Данные'    },
 ];
 
@@ -1168,14 +1204,19 @@ function sheetSecs() {
     }).join('');
 }
 
-const SHEET_VIEWS = { secs:sheetSecs, check:sheetCheck, stop:sheetStop, meds:sheetMeds, set:sheetSet, wish:sheetWish, data:sheetData };
+const SHEET_VIEWS = { secs:sheetSecs, check:sheetCheck, stop:sheetStop, meds:sheetMeds, set:sheetSet, wish:sheetWish, cash:sheetCash, data:sheetData };
 
 function renderSheet() {
   if (!sheetTabsOn().some(t => t.key === sheetTab)) sheetTab = 'secs';
   $seg.innerHTML = sheetTabsOn().map(t =>
     '<button data-act="sheet-tab" data-tab="' + t.key + '" class="' + (sheetTab === t.key ? 'on' : '') + '">' +
     t.label + '</button>').join('');
+  const isCash = sheetTab === 'cash';
+  if (!isCash) cashSettingsDone();
+  $sheetBody.classList.toggle('is-cash', isCash);
+  if (isCash && $sheetBody.querySelector('.cash-set iframe')) return;   // рамка уже открыта — не перезагружать
   $sheetBody.innerHTML = (SHEET_VIEWS[sheetTab] || sheetCheck)();
+  if (isCash) { cashSetUsed = true; cashFrame('set', $sheetBody.querySelector('.cash-set')); }
 }
 
 function openSheet() {
@@ -1189,6 +1230,8 @@ function closeSheet() {
   sheetOpen = false;
   $sheet.classList.remove('open');
   $sheet.setAttribute('aria-hidden', 'true');
+  if ($sheetBody.querySelector('.cash-set')) $sheetBody.innerHTML = '';   // рамку настроек Cash закрываем
+  cashSettingsDone();
   render(true);
 }
 

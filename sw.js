@@ -1,7 +1,7 @@
 /* Офлайн-кэш. Меняйте VERSION при выкладке новой версии. */
-const VERSION = 'owls-day-v31';
+const VERSION = 'owls-day-v32';
 const ASSETS = [
-  './', './index.html', './app.js?v=31', './manifest.webmanifest',
+  './', './index.html', './app.js?v=32', './manifest.webmanifest',
   './assets/owl-mark.png?v=2', './assets/owls-day-mark.svg?v=20',
   './assets/apple-touch-icon.png?v=18', './assets/owls-day-192.png?v=18', './assets/owls-day-512.png?v=18',
 ];
