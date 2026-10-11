@@ -181,6 +181,8 @@ const ICON = {
   trash:'<path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/>',
   eye:'<path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="3"/>',
   eyeoff:'<path d="M3 3l18 18M10.6 5.3A10 10 0 0 1 12 5.2c6 0 9.5 6.8 9.5 6.8a15 15 0 0 1-3.2 3.9M6.6 6.6C4 8.4 2.5 12 2.5 12s3.5 6.8 9.5 6.8c1.6 0 3-.4 4.2-1M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
+  thumb:'<path d="M7 10.5V20H4.5a1 1 0 0 1-1-1v-7.5a1 1 0 0 1 1-1H7Zm0 0 3.8-7.2a1.8 1.8 0 0 1 3.3 1V9h5a2 2 0 0 1 2 2.4l-1.4 6.8A2.2 2.2 0 0 1 16.6 20H7"/>',
+  thumbdn:'<g transform="rotate(180 12 12)"><path d="M7 10.5V20H4.5a1 1 0 0 1-1-1v-7.5a1 1 0 0 1 1-1H7Zm0 0 3.8-7.2a1.8 1.8 0 0 1 3.3 1V9h5a2 2 0 0 1 2 2.4l-1.4 6.8A2.2 2.2 0 0 1 16.6 20H7"/></g>',
   pill:'<rect x="3" y="8.5" width="18" height="7" rx="3.5" transform="rotate(-45 12 12)"/><path d="m9.2 9.2 5.6 5.6"/>',
   photo:'<rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="10.5" r="1.8"/><path d="m4.5 17 4.8-4.2 3.4 3 2.6-2.2 4.2 3.4"/>',
 };
@@ -246,9 +248,9 @@ function seed() {
       { id:'w3', text:'Поехать в Тбилиси на неделю',   cat:'Путешествия', note:'Вдвоём, 7 дней', due:'', done:false, photo:'' },
     ],
     stops: [
-      { id:'s1', text:'Телефон в кровати',       clean:0, slipped:false },
-      { id:'s2', text:'Сериалы в рабочее время', clean:0, slipped:false },
-      { id:'s3', text:'Сладкое после 19:00',     clean:0, slipped:false },
+      { id:'s1', text:'Телефон в кровати',       clean:0, mark:'' },
+      { id:'s2', text:'Сериалы в рабочее время', clean:0, mark:'' },
+      { id:'s3', text:'Сладкое после 19:00',     clean:0, mark:'' },
     ],
     meds: [],
     mood: 2,
@@ -291,6 +293,9 @@ function migrate(s) {
   s.intentions = (s.intentions || []).map(i => ({ id: i.id, text: i.text }));
   s.meds = (Array.isArray(s.meds) ? s.meds : []).map(m => ({ ...m, every: Number(m.every) || 1, start: m.start || dayKeyOf(new Date()) }));
   s.backupAt = s.backupAt || ''; s.edits = Number(s.edits) || 0; s.backupSnooze = s.backupSnooze || '';
+  /* стоп-лист: было «сорвался да/нет», стало три положения — '' (не отмечено), 'up' (держусь), 'down' (сорвался) */
+  s.stops = (s.stops || []).map(({ slipped, ...x }) => ({ ...x, mark: x.mark !== undefined ? x.mark : (slipped ? 'down' : '') }));
+  s.off = Array.isArray(s.off) ? s.off.filter(k => TITLES[k]) : [];
   if (!TITLES[s.tab]) s.tab = 'check';   // вкладки «Установки» больше нет
   s.v = 2;
   return s;
@@ -319,7 +324,7 @@ function rollover() {
   for (const p of PHASES) S.items[p.key].forEach(i => { i.done = false; });
   S.moments.forEach(m => { m.count = 0; });
   S.meds.forEach(m => { m.done = false; });
-  S.stops.forEach(x => { if (!x.slipped) x.clean += 1; else { x.clean = 0; x.slipped = false; } });
+  S.stops.forEach(x => { if (x.mark === 'up') x.clean += 1; else if (x.mark === 'down') x.clean = 0; x.mark = ''; });
   S.fields = { good:'', hard:'', thanks:'' };
   S.dayKey = today;
   save();
@@ -355,9 +360,18 @@ const headerDate = () => {
   return d.getDate() + ' ' + MONTHS[d.getMonth()] + ', ' + WEEKDAYS[d.getDay()];
 };
 
+/** Включённые разделы; хотя бы один остаётся всегда. */
+function activeTabs() {
+  const off = S.off || [];
+  const t = TABS.filter(x => !off.includes(x.key));
+  return t.length ? t : TABS.slice(0, 1);
+}
+
 function renderNav() {
-  if (!$nav.querySelector('button')) {
-    $nav.innerHTML = TABS.map(t =>
+  const keys = activeTabs().map(t => t.key).join(',');
+  if ($nav.dataset.keys !== keys) {                 // набор разделов поменялся — пересобираем меню
+    $nav.dataset.keys = keys;
+    $nav.innerHTML = activeTabs().map(t =>
       '<button data-act="tab" data-tab="' + t.key + '">' +
         svg(t.icon, { size:21, color:'var(--faint)', width:1.8 }) +
         '<span>' + t.label + '</span><i class="ul"></i></button>').join('') +
@@ -511,27 +525,43 @@ function viewCheck() {
 }
 
 /* ---------- экран: стоп-лист ---------- */
+/** Ползунок: слева палец вниз, справа вверх, по умолчанию посередине. */
+function stopSlider(x) {
+  const cls = x.mark === 'up' ? ' up' : x.mark === 'down' ? ' dn' : '';
+  const k = x.mark === 'up' ? svg('thumb', { size:15, color:'var(--ok)', width:2 })
+          : x.mark === 'down' ? svg('thumbdn', { size:15, color:'var(--bad)', width:2 })
+          : '<i class="sl-dot"></i>';
+  return '<div class="sl' + cls + '" data-id="' + x.id + '" role="slider" aria-label="' + esc(x.text) +
+    '" aria-valuetext="' + (x.mark === 'up' ? 'держусь' : x.mark === 'down' ? 'сорвался' : 'не отмечено') + '">' +
+    '<span class="sl-i l">' + svg('thumbdn', { size:16, color:'var(--bad)', width:1.8 }) + '</span>' +
+    '<span class="sl-i r">' + svg('thumb', { size:16, color:'var(--ok)', width:1.8 }) + '</span>' +
+    '<span class="sl-k">' + k + '</span></div>';
+}
 function viewStop() {
   const stops = vis(S.stops);
   if (!stops.length) return emptyHint('Стоп-лист пуст.');
-  const holding = stops.filter(x => !x.slipped).length;
-  const best = stops.filter(x => !x.slipped).reduce((a, x) => Math.max(a, x.clean), 0);
-  return ringCard('stop', holding, stops.length,
-      holding + ' из ' + stops.length + ' держатся',
-      stops.some(x => x.slipped) ? 'Один срыв не отменяет день. Отмечайте честно.'
+  const up = stops.filter(x => x.mark === 'up').length;
+  const down = stops.filter(x => x.mark === 'down').length;
+  const open = stops.length - up - down;
+  const best = stops.filter(x => x.mark !== 'down').reduce((a, x) => Math.max(a, x.clean), 0);
+  return ringCard('stop', up, stops.length,
+      up + ' из ' + stops.length + ' держатся',
+      down ? 'Один срыв не отменяет день. Отмечайте честно.'
+        : open ? 'Отметьте ' + (open === stops.length ? 'каждый пункт' : 'оставшиеся ' + open) + ': вправо — держусь, влево — сорвался.'
         : best ? 'Ни одного срыва сегодня. Лучшая серия — ' + best + ' ' + plural(best, 'день', 'дня', 'дней') + '.'
         : 'Ни одного срыва сегодня. Так и держите.') +
     '<section class="card flush">' +
       '<div class="sec-h"><span class="sec-t">Чего не делаю</span>' +
-      '<span class="sec-s">Нажмите, если сорвались — серия обнулится</span></div>' +
+      '<span class="sec-s">Вправо — держусь, влево — сорвался</span></div>' +
       stops.map(x =>
-        '<button class="item" data-act="stop" data-id="' + x.id + '" style="min-height:60px;padding:12px 16px;align-items:flex-start">' +
-          '<span class="grow" style="display:flex;flex-direction:column;gap:5px">' +
+        '<div class="srow">' +
+          '<span class="grow" style="display:flex;flex-direction:column;gap:5px;min-width:0">' +
             '<span style="font-size:14px;font-weight:600;line-height:1.35">' + esc(x.text) + '</span>' +
-            '<span style="font-size:11.5px;color:var(--faint)">' +
-              (x.slipped ? 'Серия сброшена сегодня' : 'Чисто ' + x.clean + ' ' + plural(x.clean, 'день', 'дня', 'дней')) +
+            '<span style="font-size:11.5px;color:' + (x.mark === 'down' ? 'var(--bad)' : 'var(--faint)') + '">' +
+              (x.mark === 'down' ? 'Серия сброшена сегодня' : 'Чисто ' + x.clean + ' ' + plural(x.clean, 'день', 'дня', 'дней')) +
             '</span></span>' +
-          '<span class="pill ' + (x.slipped ? 'bad">Сорвался' : 'ok">Держусь') + '</span></button>').join('') +
+          stopSlider(x) +
+        '</div>').join('') +
     '</section>';
 }
 
@@ -719,6 +749,7 @@ function viewDiary() {
 const VIEWS = { check:viewCheck, stop:viewStop, meds:viewMeds, wish:viewWish, diary:viewDiary };
 
 function render(keepScroll, cascade) {
+  if ((S.off || []).includes(S.tab)) S.tab = activeTabs()[0].key;
   const y = keepScroll ? $screen.scrollTop : 0;
   const t = TITLES[S.tab] || TITLES.check;
   document.getElementById('eyebrow').textContent = t.eyebrow;
@@ -774,9 +805,9 @@ const SW_PART = 0.25, SW_FAST = 0.45, SW_MIN = 44;
 const SW_LOCK_X = 16, SW_LOCK_Y = 8, SW_RATIO = 2, SW_EDGE = 28;
 let swId = null, swX = 0, swY = 0, swT = 0, swDir = 0, swOn = false, swTo = null, swMoved = false, swTop = 0;
 
-const tabAt = n => (TABS[n] ? TABS[n].key : null);
+const tabAt = n => { const t = activeTabs(); return t[n] ? t[n].key : null; };
 function neighbour(dx) {
-  const i = TABS.findIndex(t => t.key === S.tab);
+  const i = activeTabs().findIndex(t => t.key === S.tab);
   return tabAt(dx < 0 ? i + 1 : i - 1);
 }
 /** Ждём переход именно этого элемента: transitionend всплывает от потомков. */
@@ -812,7 +843,7 @@ function swCancel() {
 
 $screen.addEventListener('pointerdown', e => {
   if (sheetOpen || swId !== null || e.isPrimary === false) return;
-  if (e.target.closest('textarea, input, select, .del')) return;
+  if (e.target.closest('textarea, input, select, .del, .sl')) return;
   const w0 = $screen.clientWidth || 1;
   if (e.clientX < SW_EDGE || e.clientX > w0 - SW_EDGE) return;     // край отдаём системе
   swId = e.pointerId; swX = e.clientX; swY = e.clientY; swT = performance.now();
@@ -876,6 +907,7 @@ function swDropFlag() { setTimeout(() => { swMoved = false; }, 0); }
 /* ============================ настройки ============================ */
 
 const SHEET_TABS = [
+  { key:'secs',  label:'Разделы'   },
   { key:'check', label:'Чек-лист'  },
   { key:'stop',  label:'Стоп-лист' },
   { key:'meds',  label:'Лекарства' },
@@ -1002,7 +1034,7 @@ function sheetStop() {
     (S.stops.length ? S.stops.map(x =>
       '<div class="' + rowCls('stop', x.id) + (x.hidden ? ' off' : '') + '" data-act="edit-stop" data-id="' + x.id + '"><span class="grow">' +
         '<div class="m-t">' + esc(x.text) + '</div>' +
-        '<div class="m-s">' + (x.slipped ? 'Сорвался сегодня' : 'Чисто ' + x.clean + ' ' + plural(x.clean, 'день', 'дня', 'дней')) + (x.hidden ? ' · скрыто' : '') + '</div>' +
+        '<div class="m-s">' + (x.mark === 'down' ? 'Сорвался сегодня' : 'Чисто ' + x.clean + ' ' + plural(x.clean, 'день', 'дня', 'дней')) + (x.hidden ? ' · скрыто' : '') + '</div>' +
       '</span>' + (editing('stop') && E.id === x.id ? '<span class="m-e">правка</span>' : '') +
       eyeBtn('stop', x.id, x.hidden) +
       trashBtn('del-stop', 'data-id="' + x.id + '"', 'Удалить запрет') + '</div>').join('')
@@ -1092,10 +1124,27 @@ function sheetWish() {
     }).join('') : '<div class="empty">Пока пусто.</div>');
 }
 
-const SHEET_VIEWS = { check:sheetCheck, stop:sheetStop, meds:sheetMeds, set:sheetSet, wish:sheetWish, data:sheetData };
+/** Вкладка настроек раздела, который выключен, тоже прячется. */
+const sheetTabsOn = () => SHEET_TABS.filter(t => !(S.off || []).includes(t.key));
+
+function sheetSecs() {
+  const off = S.off || [];
+  return '<div class="form"><span class="sec-t">Разделы</span>' +
+      '<span class="note">Выключенный раздел пропадает из меню внизу и из настроек. Данные в нём сохраняются: включите обратно — всё на месте.</span></div>' +
+    TABS.map(t => {
+      const on = !off.includes(t.key);
+      return '<div class="mini">' + svg(t.icon, { size:19, color: on ? 'var(--accent)' : 'var(--faint)', width:1.7 }) +
+        '<span class="grow m-t">' + t.label + '</span>' +
+        '<button class="tgl' + (on ? ' on' : '') + '" role="switch" aria-checked="' + on + '" aria-label="' + t.label +
+        '" data-act="sec-toggle" data-key="' + t.key + '"><i></i></button></div>';
+    }).join('');
+}
+
+const SHEET_VIEWS = { secs:sheetSecs, check:sheetCheck, stop:sheetStop, meds:sheetMeds, set:sheetSet, wish:sheetWish, data:sheetData };
 
 function renderSheet() {
-  $seg.innerHTML = SHEET_TABS.map(t =>
+  if (!sheetTabsOn().some(t => t.key === sheetTab)) sheetTab = 'secs';
+  $seg.innerHTML = sheetTabsOn().map(t =>
     '<button data-act="sheet-tab" data-tab="' + t.key + '" class="' + (sheetTab === t.key ? 'on' : '') + '">' +
     t.label + '</button>').join('');
   $sheetBody.innerHTML = (SHEET_VIEWS[sheetTab] || sheetCheck)();
@@ -1298,6 +1347,22 @@ const ACTIONS = {
   settings() { openSheet(); },
   'close-settings'() { closeSheet(); },
   'sheet-tab'(el) { cancelEdit(true); sheetTab = el.dataset.tab; renderSheet(); },
+  'sec-toggle'(el) {
+    const key = el.dataset.key;
+    const off = new Set(S.off || []);
+    if (off.has(key)) off.delete(key);
+    else {
+      if (TABS.length - off.size <= 1) { toast('Хотя бы один раздел должен остаться'); return; }
+      off.add(key);
+    }
+    S.off = TABS.map(t => t.key).filter(k => off.has(k));
+    if (off.has(S.tab)) S.tab = activeTabs()[0].key;
+    save();
+    renderSheet();
+    render(false);
+    const t = TABS.find(x => x.key === key);
+    toast((off.has(key) ? 'Выключен: ' : 'Включён: ') + t.label);
+  },
 
   /* главный экран */
   item(el) {
@@ -1317,15 +1382,6 @@ const ACTIONS = {
     splashAt(el);
     commit();
     animateOnce(document.querySelector('[data-act="moment"][data-id="' + m.id + '"]'), 'pop');
-  },
-  stop(el) {
-    const x = S.stops.find(y => y.id === el.dataset.id);
-    if (!x) return;
-    x.slipped = !x.slipped;
-    if (x.slipped) x.clean = 0;
-    else splashAt(el.querySelector('.pill'));          // радость — когда снова «Держусь»
-    commit();
-    if (!x.slipped) animateOnce(document.querySelector('[data-act="stop"][data-id="' + x.id + '"] .pill'), 'pop');
   },
   wish(el) {
     const w = S.wishes.find(x => x.id === el.dataset.id);
@@ -1443,7 +1499,7 @@ const ACTIONS = {
   'add-stop'() {
     const text = F.stop.trim();
     if (!text) { toast('Введите название'); return; }
-    S.stops.push({ id: uid('s'), text, clean:0, slipped:false });
+    S.stops.push({ id: uid('s'), text, clean:0, mark:'' });
     F.stop = '';
     commitSheet();
     toast('Запрет добавлен');
@@ -1738,6 +1794,54 @@ document.addEventListener('contextmenu', e => { if (e.target.closest('.del')) e.
 
 /* окно шагов: касание по затемнению закрывает */
 $dlg.addEventListener('click', e => { if (e.target === $dlg) closeDlg(); });
+
+/* ползунок стоп-листа: тянуть или коснуться края; отпустили — встаёт в ближайшее из трёх положений */
+const SL_TRAVEL = 86;
+let slDrag = null;
+function setStopMark(id, mark) {
+  const x = S.stops.find(y => y.id === id);
+  if (!x) return;
+  if (x.mark === mark) { render(true); return; }        // вернуть ручку на место
+  x.mark = mark;
+  if (mark === 'up') { splashAt(document.querySelector('.sl[data-id="' + id + '"] .sl-k')); }
+  else if (mark === 'down') buzz([40]);
+  commit();
+  if (mark) animateOnce(document.querySelector('.sl[data-id="' + id + '"] .sl-k'), 'pop');
+}
+document.addEventListener('pointerdown', e => {
+  const sl = e.target.closest('.sl');
+  if (!sl) return;
+  const x = S.stops.find(y => y.id === sl.dataset.id);
+  if (!x) return;
+  const start = x.mark === 'down' ? 0 : x.mark === 'up' ? SL_TRAVEL : SL_TRAVEL / 2;
+  slDrag = { sl, id: sl.dataset.id, x0: e.clientX, start, pos: start, moved: false, pid: e.pointerId };
+  sl.classList.add('dragging');
+});
+document.addEventListener('pointermove', e => {
+  if (!slDrag || e.pointerId !== slDrag.pid) return;
+  const dx = e.clientX - slDrag.x0;
+  if (!slDrag.moved && Math.abs(dx) < 5) return;
+  slDrag.moved = true;
+  slDrag.pos = Math.max(0, Math.min(SL_TRAVEL, slDrag.start + dx));
+  slDrag.sl.querySelector('.sl-k').style.transform = 'translateX(' + slDrag.pos + 'px)';
+});
+document.addEventListener('pointerup', e => {
+  if (!slDrag || e.pointerId !== slDrag.pid) return;
+  const d = slDrag; slDrag = null;
+  d.sl.classList.remove('dragging');
+  let pos = d.pos;
+  if (!d.moved) {                                         // касание: какая треть ползунка
+    const r = d.sl.getBoundingClientRect();
+    pos = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * SL_TRAVEL;
+  }
+  setStopMark(d.id, pos < SL_TRAVEL / 3 ? 'down' : pos > SL_TRAVEL * 2 / 3 ? 'up' : '');
+});
+document.addEventListener('pointercancel', () => {      // начали листать — ручку на место
+  if (!slDrag) return;
+  slDrag.sl.classList.remove('dragging');
+  slDrag.sl.querySelector('.sl-k').style.transform = '';
+  slDrag = null;
+});
 
 /* делегирование: один слушатель на всё приложение */
 document.addEventListener('click', e => {
@@ -2182,7 +2286,7 @@ function xlImport(book) {
     S.stops = t.map(r => {
       const old = pickOld(pool, r[0], 'text');
       const n = typeof r[1] === 'number' ? Math.max(0, Math.round(r[1])) : (cellStr(r[1]) ? Number(cellStr(r[1])) : NaN);
-      return { id: old ? old.id : uid('s'), text: cellStr(r[0]), clean: Number.isFinite(n) ? n : (old ? old.clean : 0), slipped: old ? !!old.slipped : false, hidden: old ? !!old.hidden : false };
+      return { id: old ? old.id : uid('s'), text: cellStr(r[0]), clean: Number.isFinite(n) ? n : (old ? old.clean : 0), mark: old ? old.mark || '' : '', hidden: old ? !!old.hidden : false };
     });
     done.push('стоп-лист ' + t.length);
   }
