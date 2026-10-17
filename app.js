@@ -1403,6 +1403,7 @@ function sortRows(list, onChange) {
     const grip = e.target.closest('.grip');
     if (!grip || !e.isPrimary) return;
     row = grip.closest('.sec-row');
+    tap('medium');
     pid = e.pointerId; y0 = e.clientY;
     row.classList.add('drag');
     try { grip.setPointerCapture(pid); } catch (_) {}
@@ -1610,6 +1611,14 @@ function owlSay() {
 
 /* вибрация: Android — да; iPhone Safari не даёт веб-страницам доступа к мотору */
 function buzz(pattern) { try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) { /* не поддерживается */ } }
+/* В приложении из App Store страница живёт в WebView, и вибрацию делает оно (window.OWLS_NATIVE).
+   kind: light | medium | heavy | rigid | selection | success | warning | error. */
+const nativeApp = () => window.OWLS_NATIVE && window.ReactNativeWebView;
+const TAP_WEB = { light:[12], medium:[20], heavy:[35], rigid:[16], selection:[8], success:[18, 30, 42], warning:[40], error:[30, 40, 30] };
+function tap(kind) {
+  if (nativeApp()) { try { window.ReactNativeWebView.postMessage(JSON.stringify({ t:'haptic', k: kind })); } catch (e) {} return; }
+  buzz(TAP_WEB[kind] || TAP_WEB.light);
+}
 
 function animateOnce(el, cls) {
   if (!el) return;
@@ -1623,8 +1632,8 @@ function animateOnce(el, cls) {
 }
 
 /** Всплеск из центра элемента. Вызывать ДО перерисовки — координаты берём с живого узла. */
-function splashAt(el) {
-  buzz([18, 30, 42]);
+function splashAt(el, kind) {
+  tap(kind || 'light');
   if (reducedMotion || !el) return null;
   const r = el.getBoundingClientRect();
   burst(r.left + r.width / 2, r.top + r.height / 2);
@@ -1632,7 +1641,7 @@ function splashAt(el) {
 }
 /** Сова — для желаний. */
 function owlFor(cardSelector) {
-  buzz([14, 40, 22]);
+  tap('success');
   if (reducedMotion) return;
   owlSay();
   const btn = document.querySelector(cardSelector);
@@ -1650,6 +1659,7 @@ function toast(msg) {
 }
 
 function hideToggle(list, id) {
+  tap('selection');
   const x = (list || []).find(y => y.id === id);
   if (!x) return;
   x.hidden = !x.hidden;
@@ -1696,6 +1706,7 @@ const ACTIONS = {
     save();
     /* Переключатель доезжает сам, лист перерисовывается, когда движение кончилось. */
     const on = !off.has(key);
+    tap('selection');
     el.classList.toggle('on', on);
     el.setAttribute('aria-checked', String(on));
     render(false);
@@ -1732,7 +1743,7 @@ const ACTIONS = {
     commit();
     if (w.done) owlFor('[data-act="wish"][data-id="' + w.id + '"]');
   },
-  mood(el) { S.mood = Number(el.dataset.i); commit(); },
+  mood(el) { S.mood = Number(el.dataset.i); tap('selection'); commit(); },
   'save-entry'() {
     const f = S.fields;
     const parts = { good:(f.good || '').trim(), hard:(f.hard || '').trim(), thanks:(f.thanks || '').trim() };
@@ -1750,7 +1761,7 @@ const ACTIONS = {
     const d = new Date();
     S.entries.unshift({ id: uid('x'), date: d.getDate() + ' ' + MONTHS[d.getMonth()], mood: MOODS[S.mood], text, parts });
     S.fields = { good:'', hard:'', thanks:'' };
-    splashAt(document.querySelector('[data-act="save-entry"]'));
+    splashAt(document.querySelector('[data-act="save-entry"]'), 'success');
     commit(false);
     toast('Запись сохранена');
   },
@@ -1818,8 +1829,8 @@ const ACTIONS = {
     if (hasStock(m)) {
       if (m.done) { m.taken = Math.min(m.stock, Number(m.qty) || 1); m.stock -= m.taken; }
       else { m.stock += m.taken || 0; m.taken = 0; }
-      if (m.done && m.stock <= 0) toast(m.name + ': закончилось — пора купить');
-      else if (m.done && stockLow(m)) toast(m.name + ': ' + stockLine(m));
+      if (m.done && m.stock <= 0) { toast(m.name + ': закончилось — пора купить'); setTimeout(() => tap('warning'), 250); }
+      else if (m.done && stockLow(m)) { toast(m.name + ': ' + stockLine(m)); setTimeout(() => tap('warning'), 250); }
     }
     if (m.done) splashAt(el.querySelector('.box'));
     commit();
@@ -2101,7 +2112,7 @@ document.addEventListener('pointerdown', e => {
     holdTimer = null; holdFired = true;
     const m = S.moments.find(x => x.id === chip.dataset.id);
     if (!m) return;
-    if (m.count) { m.count = 0; commit(); toast('Сброшено'); }
+    if (m.count) { m.count = 0; tap('medium'); commit(); toast('Сброшено'); }
     else toast('Счётчик и так пуст');
   }, HOLD_MS);
 });
@@ -2127,7 +2138,7 @@ document.addEventListener('pointerdown', e => {
   delTimer = setTimeout(() => {
     delTimer = null; delFired = true; b.classList.remove('holding');
     const fn = ACTIONS[b.dataset.act];
-    if (fn) { buzz([30]); fn(b); toast('Удалено'); }
+    if (fn) { tap('heavy'); fn(b); toast('Удалено'); }
   }, DEL_MS);
 });
 document.addEventListener('pointermove', e => {
@@ -2152,8 +2163,9 @@ function setStopMark(id, mark) {
   if (!x) return;
   if (x.mark === mark) { render(true); return; }        // вернуть ручку на место
   x.mark = mark;
-  if (mark === 'up') { splashAt(document.querySelector('.sl[data-id="' + id + '"] .sl-k')); }
-  else if (mark === 'down') buzz([40]);
+  if (mark === 'up') { splashAt(document.querySelector('.sl[data-id="' + id + '"] .sl-k'), 'success'); }
+  else if (mark === 'down') tap('warning');
+  else tap('selection');
   commit();
   if (mark) animateOnce(document.querySelector('.sl[data-id="' + id + '"] .sl-k'), 'pop');
 }
@@ -2513,6 +2525,12 @@ function xlExport() {
 /** Отдаёт файл: на iPhone — через «Поделиться» (там есть «Сохранить в Файлы»), иначе скачиванием.
     Возвращает true, если файл ушёл, false — если окно закрыли. */
 async function deliverFile(blob, name) {
+  /* В приложении: файл отдаём WebView, оно откроет системное «Поделиться» → «Сохранить в Файлы». */
+  if (nativeApp()) {
+    const b64 = await new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1] || ''); r.onerror = no; r.readAsDataURL(blob); });
+    window.ReactNativeWebView.postMessage(JSON.stringify({ t:'file', name, mime: blob.type || 'application/octet-stream', b64 }));
+    return true;
+  }
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   if (ios && navigator.canShare) {
     const file = new File([blob], name, { type: blob.type });
