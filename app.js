@@ -2517,7 +2517,7 @@ async function deliverFile(blob, name) {
   if (ios && navigator.canShare) {
     const file = new File([blob], name, { type: blob.type });
     if (navigator.canShare({ files:[file] })) {
-      try { await navigator.share({ files:[file], title: name }); return true; }
+      try { await navigator.share({ files:[file] }); return true; }   // без title: иначе «Сохранить в Файлы» кладёт рядом «текст N.txt»
       catch (e) { return false; }
     }
   }
