@@ -78,6 +78,20 @@ function medLine(m) {
   const f = MED_FORMS[m.form] || MED_FORMS.tab;
   return m.qty + ' ' + plural(m.qty, f.one, f.few, f.many) + ' · ' + (MED_MEAL[m.meal] || MED_MEAL.after);
 }
+/** Остаток в упаковке: null — не ведём. При отметке «принял» списывается доза, при снятии — возвращается. */
+const hasStock = m => typeof m.stock === 'number' && isFinite(m.stock);
+/** Сколько дней хватит при текущей частоте. */
+const stockDays = m => Math.floor(m.stock / (Number(m.qty) || 1)) * (Number(m.every) || 1);
+function stockLine(m) {
+  if (!hasStock(m)) return '';
+  const f = MED_FORMS[m.form] || MED_FORMS.tab;
+  if (m.stock <= 0) return 'закончилось';
+  return 'осталось ' + m.stock + ' ' + plural(m.stock, f.one, f.few, f.many);
+}
+/** Мало — меньше чем на 5 дней: строку подсвечиваем, чтобы успеть купить. */
+const stockLow = m => hasStock(m) && stockDays(m) < 5;
+/** Поле формы → остаток: пусто — не считать. */
+const stockOf = v => { const t = String(v == null ? '' : v).trim(); if (!t) return null; const n = Math.round(Number(t)); return isFinite(n) ? Math.min(9999, Math.max(0, n)) : null; };
 /** …и частота, если не ежедневно: «2 таблетки · после еды · через день» */
 function medLineFull(m) {
   const e = Number(m.every) || 1;
@@ -295,7 +309,8 @@ function migrate(s) {
   s.wishes = (s.wishes || []).map(w => ({ ...w, photo: w.photo || '',
     steps: (Array.isArray(w.steps) ? w.steps : []).map(x => ({ id: x.id || uid('st'), text: x.text || '', date: x.date || x.due || dayKeyOf(new Date()) })) }));
   s.intentions = (s.intentions || []).map(i => ({ id: i.id, text: i.text }));
-  s.meds = (Array.isArray(s.meds) ? s.meds : []).map(m => ({ ...m, every: Number(m.every) || 1, start: m.start || dayKeyOf(new Date()) }));
+  s.meds = (Array.isArray(s.meds) ? s.meds : []).map(m => ({ ...m, every: Number(m.every) || 1, start: m.start || dayKeyOf(new Date()),
+    stock: typeof m.stock === 'number' && isFinite(m.stock) ? Math.max(0, Math.round(m.stock)) : null, taken: Number(m.taken) || 0 }));
   s.backupAt = s.backupAt || ''; s.edits = Number(s.edits) || 0; s.backupSnooze = s.backupSnooze || '';
   /* стоп-лист: было «сорвался да/нет», стало три положения — '' (не отмечено), 'up' (держусь), 'down' (сорвался) */
   s.stops = (s.stops || []).map(({ slipped, ...x }) => ({ ...x, mark: x.mark !== undefined ? x.mark : (slipped ? 'down' : '') }));
@@ -328,7 +343,7 @@ function rollover() {
 
   for (const p of PHASES) S.items[p.key].forEach(i => { i.done = false; });
   S.moments.forEach(m => { m.count = 0; });
-  S.meds.forEach(m => { m.done = false; });
+  S.meds.forEach(m => { m.done = false; m.taken = 0; });
   S.stops.forEach(x => { if (x.mark === 'up') x.clean += 1; else if (x.mark === 'down') x.clean = 0; x.mark = ''; });
   S.fields = { good:'', hard:'', thanks:'' };
   S.dayKey = today;
@@ -771,7 +786,8 @@ function viewMeds() {
           '<span class="box' + (m.done ? ' on' : '') + '">' + (m.done ? svg('tick', { size:13, color:'#fff', width:3 }) : '') + '</span>' +
           '<span class="grow" style="display:flex;flex-direction:column;gap:3px;text-align:left">' +
             '<span class="txt">' + esc(m.name) + '</span>' +
-            '<span style="font-size:11.5px;color:var(--faint)">' + esc(medLine(m)) + '</span></span>' +
+            '<span style="font-size:11.5px;color:var(--faint)">' + esc(medLine(m)) +
+              (hasStock(m) ? ' · <span class="' + (stockLow(m) ? 'stock-low' : '') + '">' + esc(stockLine(m)) + '</span>' : '') + '</span></span>' +
         '</button>').join('') +
       '</section>';
   }
@@ -1155,7 +1171,7 @@ const F = {
   set: '',
   wish: { text:'', due:'', photo:'' },
   step: '',
-  med: { name:'', form:'tab', qty:'1', phase:'morning', meal:'after', every:'1' },
+  med: { name:'', form:'tab', qty:'1', phase:'morning', meal:'after', every:'1', stock:'' },
 };
 
 /* Что сейчас правим: {kind, id, phase?, stash?}. null — режим добавления. */
@@ -1286,7 +1302,10 @@ function sheetMeds() {
     '<div class="f2">' +
       '<div class="f"><label>Когда</label>' + sel('phase', phases, F.med.phase) + '</div>' +
       '<div class="f"><label>Приём</label>' + sel('meal', meals, F.med.meal) + '</div></div>' +
-    '<div class="f"><label>Частота</label>' + sel('every', MED_EVERY, String(F.med.every)) + '</div>' +
+    '<div class="f2">' +
+      '<div class="f"><label>Частота</label>' + sel('every', MED_EVERY, String(F.med.every)) + '</div>' +
+      '<div class="f"><label for="m-stock">Остаток, шт</label>' +
+        '<input id="m-stock" type="number" inputmode="numeric" min="0" max="9999" step="1" data-f="med.stock" value="' + esc(F.med.stock || '') + '" placeholder="не считать"></div></div>' +
     (String(F.med.every) !== '1'
       ? '<span class="note">' + (editing('med')
           ? (() => { const m = S.meds.find(x => x.id === E.id); return 'Отсчёт остаётся с ' + (m && m.start ? fmtDate(m.start) : 'дня добавления') + '.'; })()
@@ -1299,7 +1318,7 @@ function sheetMeds() {
     h += '<div class="blk">' + p.name + '</div>' + list.map(m =>
       '<div class="' + rowCls('med', m.id) + (m.hidden ? ' off' : '') + '" data-act="edit-med" data-id="' + m.id + '"><span class="grow">' +
         '<div class="m-t">' + esc(m.name) + '</div>' +
-        '<div class="m-s">' + esc(medLineFull(m)) + (m.hidden ? ' · скрыто' : medToday(m) ? '' : ' · следующий через ' + medNextIn(m) + ' ' + plural(medNextIn(m), 'день', 'дня', 'дней')) + '</div></span>' +
+        '<div class="m-s">' + esc(medLineFull(m)) + (hasStock(m) ? ' · ' + esc(stockLine(m)) : '') + (m.hidden ? ' · скрыто' : medToday(m) ? '' : ' · следующий через ' + medNextIn(m) + ' ' + plural(medNextIn(m), 'день', 'дня', 'дней')) + '</div></span>' +
         (editing('med') && E.id === m.id ? '<span class="m-e">правка</span>' : '') +
         eyeBtn('med', m.id, m.hidden) +
         trashBtn('del-med', 'data-id="' + m.id + '"', 'Удалить лекарство') + '</div>').join('');
@@ -1796,6 +1815,12 @@ const ACTIONS = {
     const m = S.meds.find(x => x.id === el.dataset.id);
     if (!m) return;
     m.done = !m.done;
+    if (hasStock(m)) {
+      if (m.done) { m.taken = Math.min(m.stock, Number(m.qty) || 1); m.stock -= m.taken; }
+      else { m.stock += m.taken || 0; m.taken = 0; }
+      if (m.done && m.stock <= 0) toast(m.name + ': закончилось — пора купить');
+      else if (m.done && stockLow(m)) toast(m.name + ': ' + stockLine(m));
+    }
     if (m.done) splashAt(el.querySelector('.box'));
     commit();
     if (m.done) animateOnce($screen.querySelector('.ring-card'), 'nudge');
@@ -1806,8 +1831,8 @@ const ACTIONS = {
     if (!name) { toast('Введите название'); return; }
     const qty = Math.min(99, Math.max(1, Math.round(Number(F.med.qty) || 1)));
     S.meds.push({ id: uid('r'), name, form: F.med.form, qty, phase: F.med.phase, meal: F.med.meal,
-      every: Number(F.med.every) || 1, start: dayKeyOf(new Date()), done:false });
-    F.med = { name:'', form:'tab', qty:'1', phase: F.med.phase, meal: F.med.meal, every:'1' };
+      every: Number(F.med.every) || 1, start: dayKeyOf(new Date()), done:false, stock: stockOf(F.med.stock), taken: 0 });
+    F.med = { name:'', form:'tab', qty:'1', phase: F.med.phase, meal: F.med.meal, every:'1', stock:'' };
     commitSheet();
     toast('Лекарство добавлено');
   },
@@ -1988,7 +2013,7 @@ const ACTIONS = {
     if (!m) return;
     if (editing('med') && E.id === m.id) { ACTIONS['edit-cancel'](); return; }
     E = { kind:'med', id:m.id };
-    F.med = { name:m.name, form:m.form, qty:String(m.qty), phase:m.phase, meal:m.meal, every:String(m.every || 1) };
+    F.med = { name:m.name, form:m.form, qty:String(m.qty), phase:m.phase, meal:m.meal, every:String(m.every || 1), stock: hasStock(m) ? String(m.stock) : '' };
     renderSheet(); $sheetBody.scrollTop = 0;
   },
   'save-med'() {
@@ -2002,7 +2027,9 @@ const ACTIONS = {
     m.phase = F.med.phase;
     m.meal = F.med.meal;
     m.every = Number(F.med.every) || 1;
-    F.med = { name:'', form:'tab', qty:'1', phase:m.phase, meal:m.meal, every:'1' };
+    m.stock = stockOf(F.med.stock);
+    if (!hasStock(m)) m.taken = 0;
+    F.med = { name:'', form:'tab', qty:'1', phase:m.phase, meal:m.meal, every:'1', stock:'' };
     E = null;
     commitSheet(); toast('Лекарство изменено');
   },
@@ -2624,6 +2651,7 @@ function xlImport(book) {
         phase: (PHASES.find(p => norm(p.name) === norm(r[3])) || { key: old ? old.phase : 'morning' }).key,
         meal: keyOf(MED_MEAL, r[4]) || (old ? old.meal : 'after'),
         every, start: cellDay(r[6]) || (old ? old.start : today), done: old ? !!old.done : false,
+        stock: old && hasStock(old) ? old.stock : null, taken: old ? Number(old.taken) || 0 : 0,
       };
     });
     done.push('лекарства ' + t.length);
