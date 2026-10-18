@@ -381,14 +381,12 @@ const $cash = document.getElementById('cash');
 const CASH_URL = location.pathname.includes('/OWLS_DAY/') ? '../OWLS_Cash/' : 'https://0574545-hash.github.io/OWLS_Cash/';
 const RING_H = 116;   // высота карточки с кольцом при подсказке в две строки
 const CASH_CSS = {
+  /* В рамке своя «чёлка» iPhone не нужна: env(safe-area-inset-top) в iframe отдаёт отступ
+     всего экрана, и История с Дашбордом съезжали вниз. Все экраны Cash — от 18px, как главный. */
   main: '.head:has(.brand[data-act="settings"]){display:none!important}' +
-        '.screen:has(.brand[data-act="settings"]){padding-top:18px!important}' +
+        ':root{--safe-top:0px!important}.screen{padding-top:18px!important}' +
         '.sums .card.sum{height:' + RING_H + 'px!important;min-height:0!important;overflow:hidden;' +
-          'padding-top:12px!important;padding-bottom:12px!important;gap:5px!important}' +
-        /* Дашборд без своей шапки: кольца встают на место карточек главного экрана,
-           ничего не скачет. Назад — повторное касание «Расходов» в меню или свайп. */
-        '.screen[data-screen="dash"] .page-h{display:none!important}' +
-        '.screen[data-screen="dash"]{padding-top:18px!important}',
+          'padding-top:12px!important;padding-bottom:12px!important;gap:5px!important}',
   set:  '.set-h{display:none!important}.overlay{padding-top:18px!important}',
 };
 function cashFrame(mode, box, onReady) {
