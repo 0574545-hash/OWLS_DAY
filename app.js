@@ -384,7 +384,11 @@ const CASH_CSS = {
   main: '.head:has(.brand[data-act="settings"]){display:none!important}' +
         '.screen:has(.brand[data-act="settings"]){padding-top:18px!important}' +
         '.sums .card.sum{height:' + RING_H + 'px!important;min-height:0!important;overflow:hidden;' +
-          'padding-top:12px!important;padding-bottom:12px!important;gap:5px!important}',
+          'padding-top:12px!important;padding-bottom:12px!important;gap:5px!important}' +
+        /* Дашборд без своей шапки: кольца встают на место карточек главного экрана,
+           ничего не скачет. Назад — повторное касание «Расходов» в меню или свайп. */
+        '.screen[data-screen="dash"] .page-h{display:none!important}' +
+        '.screen[data-screen="dash"]{padding-top:18px!important}',
   set:  '.set-h{display:none!important}.overlay{padding-top:18px!important}',
 };
 function cashFrame(mode, box, onReady) {
@@ -1675,7 +1679,16 @@ const ACTIONS = {
     cancelEdit(true);
     closeDlg();
     const next = el.dataset.tab;
-    if (next === S.tab) { $screen.scrollTo({ top:0, behavior: reducedMotion ? 'auto' : 'smooth' }); return; }
+    if (next === S.tab) {
+      /* «Расходы» ещё раз — из дашборда или истории Cash обратно на его главный экран. */
+      if (next === 'cash') {
+        try {
+          const back = $cash.querySelector('iframe').contentDocument.querySelector('.screen:not(.leave) [data-act="go-home"]');
+          if (back) { back.click(); tap('light'); return; }
+        } catch (e) {}
+      }
+      $screen.scrollTo({ top:0, behavior: reducedMotion ? 'auto' : 'smooth' }); return;
+    }
     const dir = TABS.findIndex(t => t.key === next) > TABS.findIndex(t => t.key === S.tab) ? 'l' : 'r';
     S.tab = next; save();
     switchScreen(dir);
