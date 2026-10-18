@@ -631,7 +631,7 @@ function ringCard(key, done, total, countText, hint) {
   const shown = numKey(key);
   const to = Math.round(pct * 100);
   const wide = to === 100 || shown === 100 ? ' w3' : '';   // «100%» не помещается в кольцо крупным кеглем
-  return '<div class="card ring-card">' +
+  return '<div class="card ring-card" data-k="ring">' +
     '<div class="ring">' + ringSvg(pct, 78, 31, 8, key) +
       '<div class="pct' + wide + '" data-from="' + shown + '" data-to="' + to + '">' + shown + '%</div></div>' +
     '<div class="grow" style="display:flex;flex-direction:column;gap:6px">' +
@@ -669,7 +669,7 @@ function viewCheck() {
       const on = hist.has(k) || (k === dayKeyOf(now) && active);
       return '<div><i class="dot' + (on ? ' on' : '') + '"></i><span>' + d.s + '</span></div>';
     }).join('');
-    h += '<div class="streak"><div style="display:flex;flex-direction:column;gap:3px">' +
+    h += '<div class="streak" data-k="streak"><div style="display:flex;flex-direction:column;gap:3px">' +
       '<span class="streak-n">' + st + ' ' + plural(st, 'день', 'дня', 'дней') + ' подряд</span>' +
       '<span class="streak-s">Не пропускайте вечерний блок</span></div>' +
       '<div class="week">' + week + '</div></div>';
